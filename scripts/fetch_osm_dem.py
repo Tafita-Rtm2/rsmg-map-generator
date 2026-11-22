@@ -22,7 +22,7 @@ def overpass(q):
     for attempt in range(15):
         url = OVERPASS[attempt % len(OVERPASS)]
         try:
-            r = requests.post(url, data={"data": q}, headers=UA, timeout=400)
+            r = requests.post(url, data={"data": q}, headers=UA, timeout=(15, 120))
             if r.status_code == 200:
                 js = r.json()
                 rem = str(js.get("remark", "")).lower()
