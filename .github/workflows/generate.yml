@@ -66,7 +66,15 @@ jobs:
         if: steps.bcache.outputs.cache-hit != 'true'
         run: |
           mkdir -p .blender
-          curl -L --retry 5 -o blender.tar.xz https://download.blender.org/release/Blender4.2/blender-4.2.3-linux-x64.tar.xz
+          F=blender-4.2.3-linux-x64.tar.xz
+          for BASE in https://download.blender.org/release https://mirrors.ocf.berkeley.edu/blender/release https://ftp.nluug.nl/pub/graphics/blender/release https://mirror.freedif.org/blender/release; do
+            echo "essai $BASE"
+            rm -f blender.tar.xz
+            curl -fL --retry 3 --max-time 900 -o blender.tar.xz "$BASE/Blender4.2/$F" || continue
+            if xz -t blender.tar.xz 2>/dev/null; then OK=1; break; fi
+            echo "archive invalide ($(stat -c%s blender.tar.xz) octets)"
+          done
+          [ "${OK:-0}" = "1" ] || { echo "Blender introuvable sur les miroirs"; exit 1; }
           tar -xf blender.tar.xz -C .blender --strip-components=1
           rm blender.tar.xz
 

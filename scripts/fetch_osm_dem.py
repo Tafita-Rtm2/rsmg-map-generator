@@ -10,13 +10,16 @@ OVERPASS = [
     "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
     "https://overpass.private.coffee/api/interpreter",
+    "https://overpass.openstreetmap.fr/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
 ]
+DEFAULT_START = {"RN1": (-18.950, 47.470)}   # Anosizato, Antananarivo -> vers Tsiroanomandidy
 UA = {"User-Agent": "rsmg-map-generator/1.0"}
 
 
 def overpass(q):
     last = None
-    for attempt in range(9):
+    for attempt in range(15):
         url = OVERPASS[attempt % len(OVERPASS)]
         try:
             r = requests.post(url, data={"data": q}, headers=UA, timeout=400)
@@ -26,19 +29,24 @@ def overpass(q):
         except Exception as e:  # noqa
             last = f"{url} -> {e}"
         print("overpass: nouvel essai :", last, flush=True)
-        time.sleep(8 * (attempt + 1))
+        time.sleep(min(6 + 4 * attempt, 40))
     raise RuntimeError("Overpass indisponible : " + str(last))
 
 
-def road_graph(road, fwd):
+def road_graph(road, fwd, start_ll, km_to):
     m = re.match(r"^([A-Za-z]+)\s*0*(\d+)$", road.strip())
     if not m:
         sys.exit("Nom de route invalide : " + road)
     prefix, num = m.group(1).upper(), m.group(2)
-    pat = f"(^|;) ?{prefix} ?0*{num}(;|$)"
+    pre = "R?N" if prefix in ("RN", "N") else prefix
+    pat = f"(^|;) ?{pre} ?0*{num}(;|$)"
+    # petite zone autour du depart (requete legere) au lieu de tout Madagascar
+    h = max(0.35, km_to / 70.0)
+    lat0, lon0 = start_ll
+    bb = f"{lat0 - h:.3f},{lon0 - h:.3f},{lat0 + h:.3f},{lon0 + h:.3f}"
     queries = [
-        f'[out:json][timeout:300];way["highway"]["ref"~"{pat}"](-26.0,42.0,-11.0,51.0);out geom;',
-        f'[out:json][timeout:300];area["ISO3166-1"="MG"][admin_level=2]->.a;way(area.a)["highway"]["ref"~"{pat}"];out geom;',
+        f'[out:json][timeout:120];way["highway"]["ref"~"{pat}"]({bb});out geom;',
+        f'[out:json][timeout:120];way["highway"]["name"~"Route Nationale {num}($|[^0-9])|^RN ?{num}$"]({bb});out geom;',
     ]
     ways = []
     for q in queries:
@@ -60,9 +68,9 @@ def road_graph(road, fwd):
         x, y = fwd.transform(lon, lat)
         for nid, xx, yy in zip(ids, x, y):
             pos[nid] = (float(xx), float(yy))
-        for a, b in zip(ids[:-1], ids[1:]):
-            d = math.hypot(pos[a][0] - pos[b][0], pos[a][1] - pos[b][1])
-            G.add_edge(a, b, weight=d)
+        for a_, b_ in zip(ids[:-1], ids[1:]):
+            d = math.hypot(pos[a_][0] - pos[b_][0], pos[a_][1] - pos[b_][1])
+            G.add_edge(a_, b_, weight=d)
     print(f"{road}: {len(ways)} troncons OSM, {G.number_of_nodes()} noeuds", flush=True)
     return G, pos
 
@@ -187,11 +195,12 @@ def main():
     a = ap.parse_args()
     fwd, inv = transformers()
 
-    G, pos = road_graph(a.road, fwd)
     if a.start_lat is not None and a.start_lon is not None:
-        sx, sy = fwd.transform(a.start_lon, a.start_lat)
+        start_ll = (a.start_lat, a.start_lon)
     else:
-        sx, sy = 0.0, 0.0
+        start_ll = DEFAULT_START.get(a.road.upper().replace(" ", ""), (ORIGIN_LAT, ORIGIN_LON))
+    G, pos = road_graph(a.road, fwd, start_ll, a.km_to)
+    sx, sy = fwd.transform(start_ll[1], start_ll[0])
     full = resample(main_path(G, pos, (sx, sy)), 5.0)
     i0, i1 = int(a.km_from * 200), int(a.km_to * 200)
     P = full[i0:i1 + 1]

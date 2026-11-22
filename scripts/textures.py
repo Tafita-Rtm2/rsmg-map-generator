@@ -164,11 +164,7 @@ def road_main():
     x = np.arange(W)[None, :]
     y = np.arange(H)[:, None]
     wear = (0.75 + 0.25 * tnoise(2048, 400)[:, :W])[..., None]
-    line = np.zeros((H, W), bool)
-    line[:, 18:27] = True
-    line[:, 485:494] = True
-    line |= ((x >= 251) & (x < 261)) & ((y % 683) < 219)
-    img = np.where(line[..., None], col((224, 224, 216)) * wear, base)
+    img = base * wear   # asphalte seul, sans lignes blanches
     save_rgb("road_main", img, 85)
 
 
