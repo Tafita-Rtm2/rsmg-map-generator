@@ -35,7 +35,32 @@ def save_rgb(name, arr, q=82):
     Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8)).save(f"{OUT}/{name}.jpg", quality=q, optimize=True)
 
 
-def polyhaven(name, ids, desat=1.0):
+_CAT = None
+
+
+def ph_pick(keywords, avoid=()):
+    """Cherche dans le catalogue Poly Haven les textures dont l'id/les tags contiennent les mots-cles."""
+    global _CAT
+    if _CAT is None:
+        try:
+            _CAT = requests.get("https://api.polyhaven.com/assets?t=textures", headers=UA, timeout=60).json()
+        except Exception as e:  # noqa
+            print("[texture] catalogue Poly Haven indisponible :", e, flush=True)
+            _CAT = {}
+    scored = []
+    for pid, a in _CAT.items():
+        text = (pid + " " + str(a.get("name", "")) + " " + " ".join(a.get("tags", [])) + " " +
+                " ".join(a.get("categories", []))).lower()
+        if any(b in text for b in avoid):
+            continue
+        sc = sum((3 if k in pid.lower() else 1) for k in keywords if k in text)
+        if sc:
+            scored.append((sc, pid))
+    scored.sort(key=lambda t: -t[0])
+    return [pid for _, pid in scored[:5]]
+
+
+def ph_fetch(ids):
     for pid in ids:
         try:
             r = requests.get(f"https://api.polyhaven.com/files/{pid}", headers=UA, timeout=30)
@@ -45,15 +70,23 @@ def polyhaven(name, ids, desat=1.0):
             d = j.get("Diffuse") or j.get("diff") or j.get("Color")
             url = d["1k"]["jpg"]["url"]
             im = Image.open(io.BytesIO(requests.get(url, headers=UA, timeout=120).content)).convert("RGB")
-            im = im.resize((SIZE, SIZE))
-            if desat != 1.0:
-                im = ImageEnhance.Color(im).enhance(desat)
-            im.save(f"{OUT}/{name}.jpg", quality=82, optimize=True)
-            print(f"[texture] {name} <- Poly Haven {pid}", flush=True)
-            return True
+            return pid, im
         except Exception as e:  # noqa
-            print(f"[texture] {name}: {pid} indisponible ({e})", flush=True)
-    return False
+            print(f"[texture] {pid} indisponible ({e})", flush=True)
+    return None, None
+
+
+def polyhaven(name, ids, desat=1.0, keywords=(), avoid=()):
+    pid, im = ph_fetch(list(ids) + (ph_pick(list(keywords), avoid) if keywords else []))
+    if im is None:
+        print(f"[texture] {name} : procedurale (aucune photo)", flush=True)
+        return False
+    im = im.resize((SIZE, SIZE))
+    if desat != 1.0:
+        im = ImageEnhance.Color(im).enhance(desat)
+    im.save(f"{OUT}/{name}.jpg", quality=82, optimize=True)
+    print(f"[texture] {name} <- Poly Haven {pid}", flush=True)
+    return True
 
 
 def ground(name, c1, c2, size=512, speck=0.18, pebbles=None):
@@ -119,20 +152,23 @@ def roof_tin(name="roof_tin"):
 
 
 def road_main():
-    W, H = 256, 1024
-    n = tnoise(1024, 150)[:, :W]
-    img = col((66, 66, 70))[None, None, :] * (0.82 + 0.3 * n[..., None])
+    W, H = 512, 2048          # 7 m de large, 28 m de long
+    pid, ph = ph_fetch(["asphalt_02", "asphalt_01", "asphalt_04"] + ph_pick(["asphalt"], ("wet",)))
+    if ph is not None:
+        base = np.tile(np.array(ph.resize((512, 512)), float), (4, 1, 1)) * 0.9
+        print(f"[texture] road_main <- Poly Haven {pid}", flush=True)
+    else:
+        n = tnoise(2048, 300)[:, :W]
+        base = col((66, 66, 70))[None, None, :] * (0.82 + 0.3 * n[..., None])
+        print("[texture] road_main : procedurale", flush=True)
     x = np.arange(W)[None, :]
-    wheel = ((x > 60) & (x < 100)) | ((x > 156) & (x < 196))
-    img = np.where(wheel[..., None], img * 0.9, img)
-    wear = (0.72 + 0.28 * tnoise(1024, 220)[:, :W])[..., None]
-    white = col((222, 222, 214))
-    line = np.zeros((H, W), bool)
-    line[:, 8:14] = True
-    line[:, 242:248] = True
     y = np.arange(H)[:, None]
-    line |= ((x >= 126) & (x < 132)) & ((y % 341) < 114)
-    img = np.where(line[..., None], white * wear, img)
+    wear = (0.75 + 0.25 * tnoise(2048, 400)[:, :W])[..., None]
+    line = np.zeros((H, W), bool)
+    line[:, 18:27] = True
+    line[:, 485:494] = True
+    line |= ((x >= 251) & (x < 261)) & ((y % 683) < 219)
+    img = np.where(line[..., None], col((224, 224, 216)) * wear, base)
     save_rgb("road_main", img, 85)
 
 
@@ -221,11 +257,13 @@ def main():
     ground("shoulder", (150, 128, 100), (176, 160, 138), speck=0.3, pebbles=(200, 190, 170))
 
     # photos reelles CC0 (Poly Haven) quand c'est possible : remplacent les textures procedurales
-    polyhaven("grass", ["leafy_grass", "aerial_grass_rock", "grass_path_2"], desat=0.75)
-    polyhaven("laterite", ["red_laterite_soil_stones", "aerial_mud_1", "brown_mud_dry"], desat=0.9)
-    polyhaven("rock", ["rock_boulder_cracked", "aerial_rocks_02", "rocky_terrain_02"])
-    polyhaven("forest", ["forrest_ground_01", "brown_mud_leaves_01"], desat=0.8)
-    polyhaven("mud", ["brown_mud", "aerial_mud_1"])
+    polyhaven("grass", ["leafy_grass", "aerial_grass_rock", "grass_path_2"], desat=0.8, keywords=["grass"], avoid=["snow", "dry_grass", "dead"])
+    polyhaven("laterite", ["red_laterite_soil_stones", "aerial_mud_1", "brown_mud_dry"], keywords=["laterite", "red", "clay"], avoid=["brick", "wall"])
+    polyhaven("rock", ["rock_boulder_cracked", "aerial_rocks_02", "rocky_terrain_02"], keywords=["rock", "cliff"], avoid=["wall", "tile"])
+    polyhaven("forest", ["forrest_ground_01", "brown_mud_leaves_01"], desat=0.85, keywords=["forest", "leaves", "ground"], avoid=["snow"])
+    polyhaven("mud", ["brown_mud", "aerial_mud_1"], keywords=["mud"])
+    polyhaven("paddy", ["leafy_grass"], desat=0.9, keywords=["grass", "field"], avoid=["snow", "dry"])
+    polyhaven("shoulder", ["gravel_road", "gravelly_sand", "rocky_trail"], keywords=["gravel", "sand"], avoid=["wet"])
 
     wall("wall_white", (214, 208, 196))
     wall("wall_ochre", (200, 168, 110))
@@ -234,8 +272,8 @@ def main():
     wall("wall_green", (150, 176, 150))
     roof_tile()
     roof_tin()
-    polyhaven("roof_tile", ["roof_tiles_14", "roof_tiles"], desat=0.9)
-    polyhaven("roof_tin", ["corrugated_iron", "corrugated_iron_02"])
+    polyhaven("roof_tile", ["roof_tiles_14", "roof_tiles"], desat=0.9, keywords=["roof", "tiles"])
+    polyhaven("roof_tin", ["corrugated_iron", "corrugated_iron_02"], keywords=["corrugated", "metal"], avoid=["wall"])
     road_main()
     road_minor()
     track()

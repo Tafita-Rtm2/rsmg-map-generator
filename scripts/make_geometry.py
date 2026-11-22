@@ -238,7 +238,7 @@ def main():
     RY = P[:, 1:2] + N[:, 1:2] * cols
     RZ = np.repeat(ROADH[:, None], 3, axis=1)
     RV = np.stack([RX, RY, RZ], -1).reshape(-1, 3)
-    RUV = np.stack([np.tile([0.0, 0.5, 1.0], (n, 1)), np.repeat((S / 27.0)[:, None], 3, axis=1)], -1).reshape(-1, 2)
+    RUV = np.stack([np.tile([0.0, 0.5, 1.0], (n, 1)), np.repeat((S / 28.0)[:, None], 3, axis=1)], -1).reshape(-1, 2)
     ri, rj = np.meshgrid(np.arange(n - 1), np.arange(2), indexing="ij")
     q00, q10, q11, q01 = ri * 3 + rj, (ri + 1) * 3 + rj, (ri + 1) * 3 + rj + 1, ri * 3 + rj + 1
     RF = np.concatenate([np.stack([q00.ravel(), q10.ravel(), q11.ravel()], 1),
