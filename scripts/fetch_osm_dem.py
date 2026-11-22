@@ -35,10 +35,19 @@ def road_graph(road, fwd):
     if not m:
         sys.exit("Nom de route invalide : " + road)
     prefix, num = m.group(1).upper(), m.group(2)
-    q = ('[out:json][timeout:300];area["ISO3166-1"="MG"][admin_level=2]->.a;'
-         f'way(area.a)["highway"]["ref"~"(^|;) ?{prefix} ?0*{num}(;|$)"];out geom;')
-    js = overpass(q)
-    ways = [e for e in js.get("elements", []) if e.get("type") == "way" and e.get("geometry")]
+    pat = f"(^|;) ?{prefix} ?0*{num}(;|$)"
+    queries = [
+        f'[out:json][timeout:300];way["highway"]["ref"~"{pat}"](-26.0,42.0,-11.0,51.0);out geom;',
+        f'[out:json][timeout:300];area["ISO3166-1"="MG"][admin_level=2]->.a;way(area.a)["highway"]["ref"~"{pat}"];out geom;',
+    ]
+    ways = []
+    for q in queries:
+        js = overpass(q)
+        els = js.get("elements", [])
+        print("requete route :", len(els), "elements", js.get("remark", ""), flush=True)
+        ways = [e for e in els if e.get("type") == "way" and e.get("geometry")]
+        if ways:
+            break
     if not ways:
         sys.exit("Aucune route trouvee pour " + road)
     G = nx.Graph()
