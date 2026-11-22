@@ -7,3 +7,8 @@ decoupee en troncons de 2 km, avec zip et 7z au maximum de compression.
 **Lancer** : onglet *Actions* > *Generate map* > *Run workflow* (route, km de debut/fin).
 **Telecharger** : onglet *Releases* (lien direct) ou l'artifact du run.
 Le format est decrit dans `manifest.json` (dans l'archive). Donnees (c) OpenStreetMap contributors (ODbL).
+
+## Sortie
+- `RN1_km0-20_RSMG.zip` / `.7z` : **format natif de Simulator MG** (cartes .map.txt + parties .3ds, trees.txt, arrets, trafic).
+  A extraire dans `/sdcard/` : le dossier `RSMG/maps/` est deja dedans. Aucune modification du jeu necessaire.
+- `RN1_km0-20.zip` / `.7z` : glTF (Blender), pour d'autres usages.

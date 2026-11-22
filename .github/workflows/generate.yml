@@ -107,6 +107,9 @@ jobs:
       - name: Geometry (terrain, road, houses, villages, trees)
         run: python scripts/make_geometry.py --work work 2>&1 | tee -a run.log
 
+      - name: Export RSMG (format natif du jeu)
+        run: python scripts/export_rsmg.py 2>&1 | tee -a run.log
+
       - name: Blender (assemble + export)
         run: |
           .blender/blender -b --factory-startup -noaudio -P scripts/blender_build.py -- --work work --out out --compress "${{ inputs.compress }}" 2>&1 | tee -a run.log

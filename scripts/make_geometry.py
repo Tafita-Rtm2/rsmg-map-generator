@@ -49,7 +49,7 @@ class Acc:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--work", default="work")
-    ap.add_argument("--max-trees", type=int, default=110000)
+    ap.add_argument("--max-trees", type=int, default=600000)
     ap.add_argument("--seed", type=int, default=7)
     a = ap.parse_args()
     W = a.work
@@ -494,9 +494,12 @@ def main():
 
     dens_tree = {FO: 1 / 40, GR: 1 / 1100, LA: 1 / 2500}
     dens_bush = {FO: 1 / 80, GR: 1 / 300, LA: 1 / 600}
-    for dd, is_bush in ((dens_tree, False), (dens_bush, True)):
+    dens_grass = {GR: 0.10, PA: 0.12, FO: 0.03, LA: 0.02}   # touffes d'herbe : seulement pres de la route (45 m)
+    for dd, kindv in ((dens_tree, "t"), (dens_bush, "b"), (dens_grass, "g")):
         for code, dv in dd.items():
             sel = keep & (cls == code)
+            if kindv == "g":
+                sel = sel & (offc <= 45)
             idx = np.where(sel.ravel())[0]
             if not len(idx):
                 continue
@@ -508,8 +511,10 @@ def main():
             q0, q1, q2, q3 = (arr.reshape(-1, 3)[rep] for arr in (V0, V1, V2, V3))
             pxy = ((1 - u)[:, None] * (1 - v)[:, None] * q0 + u[:, None] * (1 - v)[:, None] * q1
                    + u[:, None] * v[:, None] * q2 + (1 - u)[:, None] * v[:, None] * q3)
-            if is_bush:
+            if kindv == "b":
                 push(pxy[:, 0], pxy[:, 1], np.full(len(rep), 4), rng.uniform(0.7, 1.5, len(rep)))
+            elif kindv == "g":
+                push(pxy[:, 0], pxy[:, 1], np.full(len(rep), 5), rng.uniform(0.6, 1.2, len(rep)))
             else:
                 sp = species_for(pxy[:, 2], len(rep))
                 push(pxy[:, 0], pxy[:, 1], sp, rng.uniform(0.75, 1.4, len(rep)))
