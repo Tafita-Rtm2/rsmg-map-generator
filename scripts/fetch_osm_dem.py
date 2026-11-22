@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Telecharge la route (OSM), les objets autour (OSM) et le relief (Copernicus DEM 30 m)."""
-import argparse, gzip, math, re, sys, time
+import argparse, gzip, json, math, os, re, sys, time
 import numpy as np
 import requests
 import networkx as nx
@@ -202,20 +202,30 @@ def main():
     a = ap.parse_args()
     fwd, inv = transformers()
 
-    if a.start_lat is not None and a.start_lon is not None:
-        start_ll = (a.start_lat, a.start_lon)
+    os.makedirs(a.out, exist_ok=True)
+    rj, oj = f"{a.out}/road.json", f"{a.out}/osm.json"
+    if os.path.exists(rj) and os.path.exists(oj):
+        # donnees OSM deja telechargees (cache GitHub) : on ne refait pas les ~30 min de requetes
+        P = np.array(json.load(open(rj))["pts"], float)
+        print(f"Donnees OSM en cache : {len(P) * 5 / 1000:.1f} km", flush=True)
     else:
-        start_ll = DEFAULT_START.get(a.road.upper().replace(" ", ""), (ORIGIN_LAT, ORIGIN_LON))
-    G, pos = road_graph(a.road, fwd, start_ll, a.km_to)
-    sx, sy = fwd.transform(start_ll[1], start_ll[0])
-    full = resample(main_path(G, pos, (sx, sy)), 5.0)
-    i0, i1 = int(a.km_from * 200), int(a.km_to * 200)
-    P = full[i0:i1 + 1]
-    if len(P) < 20:
-        sys.exit(f"Route trop courte ({len(full) * 5 / 1000:.1f} km) pour km {a.km_from}-{a.km_to}")
-    print(f"Troncon retenu : {len(P) * 5 / 1000:.1f} km", flush=True)
+        if a.start_lat is not None and a.start_lon is not None:
+            start_ll = (a.start_lat, a.start_lon)
+        else:
+            start_ll = DEFAULT_START.get(a.road.upper().replace(" ", ""), (ORIGIN_LAT, ORIGIN_LON))
+        G, pos = road_graph(a.road, fwd, start_ll, a.km_to)
+        sx, sy = fwd.transform(start_ll[1], start_ll[0])
+        full = resample(main_path(G, pos, (sx, sy)), 5.0)
+        i0, i1 = int(a.km_from * 200), int(a.km_to * 200)
+        P = full[i0:i1 + 1]
+        if len(P) < 20:
+            sys.exit(f"Route trop courte ({len(full) * 5 / 1000:.1f} km) pour km {a.km_from}-{a.km_to}")
+        print(f"Troncon retenu : {len(P) * 5 / 1000:.1f} km", flush=True)
+        ways, nodes = fetch_features(P, fwd, inv, int(a.corridor))
+        save_json(oj, {"ways": ways, "nodes": nodes})
+        save_json(rj, {"road": a.road, "km_from": a.km_from, "km_to": a.km_to,
+                       "origin": [ORIGIN_LAT, ORIGIN_LON], "pts": np.round(P, 2).tolist()})
 
-    ways, nodes = fetch_features(P, fwd, inv, int(a.corridor))
     margin = a.corridor + 500
     w, s = inv.transform(P[:, 0].min() - margin, P[:, 1].min() - margin)
     e, n = inv.transform(P[:, 0].max() + margin, P[:, 1].max() + margin)
@@ -224,11 +234,6 @@ def main():
     except Exception as ex:  # noqa
         print("Copernicus indisponible :", ex, flush=True)
         dem_skadi(w, s, e, n, f"{a.out}/dem.npz")
-
-    save_json(f"{a.out}/road.json", {"road": a.road, "km_from": a.km_from, "km_to": a.km_to,
-                                     "origin": [ORIGIN_LAT, ORIGIN_LON],
-                                     "pts": np.round(P, 2).tolist()})
-    save_json(f"{a.out}/osm.json", {"ways": ways, "nodes": nodes})
 
 
 if __name__ == "__main__":

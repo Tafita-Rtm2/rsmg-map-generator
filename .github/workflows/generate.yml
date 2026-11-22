@@ -78,11 +78,28 @@ jobs:
           tar -xf blender.tar.xz -C .blender --strip-components=1
           rm blender.tar.xz
 
+      - name: Restore OSM cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            work/osm.json
+            work/road.json
+          key: osm-${{ inputs.road }}-${{ inputs.km_from }}-${{ inputs.km_to }}-${{ inputs.corridor }}-v1
+
       - name: Download OSM + terrain
         run: |
           EXTRA=""
           if [ -n "${{ inputs.start_lat }}" ] && [ -n "${{ inputs.start_lon }}" ]; then EXTRA="--start-lat ${{ inputs.start_lat }} --start-lon ${{ inputs.start_lon }}"; fi
           python scripts/fetch_osm_dem.py --road "${{ inputs.road }}" --km-from "${{ inputs.km_from }}" --km-to "${{ inputs.km_to }}" --corridor "${{ inputs.corridor }}" $EXTRA --out work 2>&1 | tee -a run.log
+
+      - name: Save OSM cache
+        if: always() && hashFiles('work/osm.json') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            work/osm.json
+            work/road.json
+          key: osm-${{ inputs.road }}-${{ inputs.km_from }}-${{ inputs.km_to }}-${{ inputs.corridor }}-v1
 
       - name: Textures
         run: python scripts/textures.py work/tex 1024 2>&1 | tee -a run.log
