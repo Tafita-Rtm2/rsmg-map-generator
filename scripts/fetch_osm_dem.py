@@ -24,8 +24,14 @@ def overpass(q):
         try:
             r = requests.post(url, data={"data": q}, headers=UA, timeout=400)
             if r.status_code == 200:
-                return r.json()
-            last = f"{url} -> HTTP {r.status_code}"
+                js = r.json()
+                rem = str(js.get("remark", "")).lower()
+                if "error" in rem or "timed out" in rem or "out of memory" in rem:
+                    last = f"{url} -> {js.get('remark')}"
+                else:
+                    return js
+            else:
+                last = f"{url} -> HTTP {r.status_code}"
         except Exception as e:  # noqa
             last = f"{url} -> {e}"
         print("overpass: nouvel essai :", last, flush=True)
@@ -96,15 +102,15 @@ def resample(pts, step):
 
 def fetch_features(P, fwd, inv, radius):
     ways, nodes, seen = [], [], set()
-    seg = 800
+    seg = 300
     for a in range(0, len(P), seg):
         sub = P[a:a + seg + 1]
-        dec = sub[::20] if len(sub) > 20 else sub
+        dec = np.vstack([sub[::20], sub[-1:]]) if len(sub) > 20 else sub
         if len(dec) < 2:
             continue
         lon, lat = inv.transform(dec[:, 0], dec[:, 1])
         coords = ",".join(f"{la:.5f},{lo:.5f}" for la, lo in zip(lat, lon))
-        q = f"""[out:json][timeout:300];(
+        q = f"""[out:json][timeout:90];(
 way["building"](around:{radius},{coords});
 way["landuse"](around:{radius},{coords});
 way["natural"](around:{radius},{coords});
@@ -114,6 +120,7 @@ node["natural"="tree"](around:{radius},{coords});
 node["place"](around:1500,{coords});
 );out geom;"""
         js = overpass(q)
+        time.sleep(1)
         for e in js.get("elements", []):
             key = (e["type"], e["id"])
             if key in seen:
