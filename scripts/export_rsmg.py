@@ -20,7 +20,7 @@ MAX_VERTS = 60000        # par objet 3DS (limite 65535)
 MAX_FACES = 20000        # par morceau avant regroupement
 MAX_TRIS_FILE = 120000   # par fichier .3ds
 MAX_TREES = 40000        # arbres (T/P) sur toute la carte
-MAX_UNDER = 260000       # buissons + herbe sur toute la carte (memes plafonds que l'editeur)
+MAX_UNDER = 500000       # buissons + herbe sur toute la carte (herbe dense au bord des routes)
 
 KEY = {"grass": "herbe", "laterite": "laterite", "rock": "roche", "forest": "sol_foret", "paddy": "riziere",
        "mud": "boue", "water": "eau", "shoulder": "bord", "road_main": "route", "road_minor": "route_sec",
@@ -28,7 +28,7 @@ KEY = {"grass": "herbe", "laterite": "laterite", "rock": "roche", "forest": "sol
        "wall_brick": "mur_brique", "wall_green": "mur_vert", "roof_tile": "toit_tuile", "roof_tin": "toit_tole"}
 TEXSIZE = {"road_main": (512, 1024), "wall_white": (256, 256), "wall_ochre": (256, 256), "wall_pink": (256, 256),
            "wall_brick": (256, 256), "wall_green": (256, 256), "roof_tile": (256, 256), "roof_tin": (256, 256),
-           "road_minor": (256, 256), "track": (256, 256)}
+           "road_minor": (256, 256), "track": (256, 256), "cable": (16, 16), "ligne": (16, 16), "water_surface": (256, 256), "pole": (256, 256), "beton": (256, 256), "bois": (256, 256), "trottoir": (256, 256)}
 PREFIX = {"GND": "_gencol_ground", "SOLID": "solid", "DECOR": "_fake_decor"}
 
 
@@ -207,7 +207,7 @@ def main():
         if i not in keep:
             continue
         sp, x, y, z, sc = r
-        size = float(np.clip((sc - 0.6) / 0.9, 0, 1))
+        size = 0.35 + 0.65 * float(np.clip((sc - 0.6) / 0.9, 0, 1))   # arbres un peu plus grands
         if sp == 0:
             cls, pick = "T", rng.uniform(0.0, 0.3)
         elif sp == 1:
@@ -278,7 +278,11 @@ def main():
         if not os.path.exists(src):
             continue
         im = Image.open(src).convert("RGB")
-        im = im.resize(TEXSIZE.get(mat, (512, 512)), Image.LANCZOS)
+        if mat.startswith(("borne_", "panneau_", "jovena_", "cashpoint", "sac_charbon", "marchandise", "bache")):
+            if max(im.size) > 1024:
+                im.thumbnail((1024, 1024), Image.LANCZOS)
+        else:
+            im = im.resize(TEXSIZE.get(mat, (512, 512)), Image.LANCZOS)
         im.save(f"{base}/{name}/textures/{key}.png", optimize=True)
 
     # apercu : vue du dessus de la route et des arrets

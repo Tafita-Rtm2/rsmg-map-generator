@@ -139,6 +139,45 @@ node["place"](around:1500,{coords});
     return ways, nodes
 
 
+def fetch_extra(P, fwd, inv, radius):
+    """Equipements : lignes electriques, poteaux, stations-service, abribus, lampadaires, passages pietons, marches, commerces."""
+    ways, nodes, seen = [], [], set()
+    seg = 400
+    for a in range(0, len(P), seg):
+        sub = P[a:a + seg + 1]
+        dec = np.vstack([sub[::20], sub[-1:]]) if len(sub) > 20 else sub
+        if len(dec) < 2:
+            continue
+        lon, lat = inv.transform(dec[:, 0], dec[:, 1])
+        coords = ",".join(f"{la:.5f},{lo:.5f}" for la, lo in zip(lat, lon))
+        q = f"""[out:json][timeout:90];(
+way["power"~"^(line|minor_line)$"](around:{radius},{coords});
+node["power"~"^(pole|tower)$"](around:{radius},{coords});
+node["amenity"~"^(fuel|bus_station|marketplace|atm|bank|money_transfer)$"](around:{radius},{coords});
+way["amenity"~"^(fuel|marketplace)$"](around:{radius},{coords});
+node["highway"~"^(bus_stop|street_lamp|crossing)$"](around:{radius},{coords});
+node["shop"](around:{radius},{coords});
+);out geom;"""
+        js = overpass(q)
+        time.sleep(1)
+        for e in js.get("elements", []):
+            key = (e["type"], e["id"])
+            if key in seen:
+                continue
+            seen.add(key)
+            if e["type"] == "way" and e.get("geometry"):
+                lo = np.array([p["lon"] for p in e["geometry"]])
+                la = np.array([p["lat"] for p in e["geometry"]])
+                x, y = fwd.transform(lo, la)
+                ways.append({"id": e["id"], "tags": e.get("tags", {}),
+                             "pts": np.round(np.column_stack([x, y]), 2).tolist()})
+            elif e["type"] == "node" and "lat" in e:
+                x, y = fwd.transform(e["lon"], e["lat"])
+                nodes.append({"tags": e.get("tags", {}), "pt": [round(float(x), 2), round(float(y), 2)]})
+        print(f"OSM equipements {a // seg + 1}/{(len(P) + seg - 1) // seg} : {len(ways)} lignes, {len(nodes)} points", flush=True)
+    return ways, nodes
+
+
 def fill_nan(dem):
     if np.isnan(dem).all():
         raise RuntimeError("DEM vide")
@@ -225,6 +264,11 @@ def main():
         save_json(oj, {"ways": ways, "nodes": nodes})
         save_json(rj, {"road": a.road, "km_from": a.km_from, "km_to": a.km_to,
                        "origin": [ORIGIN_LAT, ORIGIN_LON], "pts": np.round(P, 2).tolist()})
+
+    xj = f"{a.out}/osm_extra.json"
+    if not os.path.exists(xj):
+        xw, xn = fetch_extra(P, fwd, inv, int(a.corridor))
+        save_json(xj, {"ways": xw, "nodes": xn})
 
     margin = a.corridor + 500
     w, s = inv.transform(P[:, 0].min() - margin, P[:, 1].min() - margin)

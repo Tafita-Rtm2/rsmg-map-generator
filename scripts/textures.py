@@ -242,6 +242,78 @@ def far(name, kind):
     im.save(f"{OUT}/far_{kind}.png", optimize=True)
 
 
+ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets")
+
+
+def solid(name, rgb, size=16):
+    Image.new("RGB", (size, size), rgb).save(f"{OUT}/{name}.jpg", quality=92)
+
+
+def atlas2(name, crop, size, top, bottom=None):
+    """Atlas : moitie gauche = image, moitie droite = couleur unie (haut) et seconde couleur (bas)."""
+    im = Image.new("RGB", size, top)
+    if bottom is not None:
+        ImageDraw.Draw(im).rectangle([size[0] // 2, size[1] // 2, size[0], size[1]], fill=bottom)
+    im.paste(crop.resize((size[0] // 2, size[1]), Image.LANCZOS), (0, 0))
+    im.save(f"{OUT}/{name}.jpg", quality=90, optimize=True)
+
+
+def user_assets():
+    """Textures fournies par l'utilisateur (assets/) + textures simples des equipements de route."""
+    try:
+        jo = Image.open(f"{ASSETS}/jovena.jpg").convert("RGB")
+        atlas2("jovena_pompe", jo.crop((205, 20, 415, 320)), (512, 512), (214, 214, 218))
+        atlas2("jovena_logo", jo.crop((60, 655, 395, 755)), (1024, 256), (245, 245, 245))
+        atlas2("jovena_boutique", jo.crop((0, 385, 418, 590)), (1024, 512), (228, 228, 222))
+        atlas2("jovena_entretien", jo.crop((435, 305, 715, 585)), (512, 512), (228, 228, 222))
+        atlas2("jovena_prix", jo.crop((35, 200, 158, 345)), (512, 512), (60, 64, 70))
+        atlas2("jovena_panneau", jo.crop((28, 5, 165, 195)), (512, 512), (245, 245, 245))
+        solid("jovena_rouge", (196, 58, 38))
+        print("[texture] Jovena <- assets/jovena.jpg", flush=True)
+    except Exception as e:  # noqa
+        print("[texture] Jovena indisponible :", e, flush=True)
+    try:
+        sc = Image.open(f"{ASSETS}/sac_charbon.jpg").convert("RGB")
+        atlas2("sac_charbon", sc.crop((0, 38, 165, 258)), (512, 512), (60, 44, 36))
+        print("[texture] sac de charbon <- assets/sac_charbon.jpg", flush=True)
+    except Exception as e:  # noqa
+        print("[texture] sac indisponible :", e, flush=True)
+    try:
+        cp = Image.open(f"{ASSETS}/cashpoint.jpg").convert("RGB")
+        w, h = cp.size
+        crop = cp.crop((int(0.282 * w), int(0.194 * h), int(0.648 * w), int(0.898 * h)))
+        atlas2("cashpoint", crop, (512, 1024), (205, 40, 36), (232, 226, 210))
+        print("[texture] cash point <- assets/cashpoint.jpg", flush=True)
+    except Exception as e:  # noqa
+        print("[texture] cashpoint indisponible :", e, flush=True)
+    # marchandises : 8 couleurs (tomates, carottes, feuilles, maïs, riz, manioc, fruits, haricots)
+    cols = [(196, 52, 40), (226, 128, 36), (70, 128, 58), (226, 190, 60), (232, 228, 214), (160, 120, 80), (214, 96, 120), (110, 70, 50)]
+    im = Image.new("RGB", (256, 64))
+    for i, c in enumerate(cols):
+        ImageDraw.Draw(im).rectangle([i * 32, 0, i * 32 + 31, 63], fill=c)
+    im.save(f"{OUT}/marchandise.jpg", quality=92)
+    # toile d'etal rayee
+    t = Image.new("RGB", (128, 128), (240, 240, 240))
+    dt = ImageDraw.Draw(t)
+    for x in range(0, 128, 32):
+        dt.rectangle([x, 0, x + 15, 127], fill=(30, 90, 170))
+    t.save(f"{OUT}/bache.jpg", quality=90)
+    ground("bois", (110, 80, 52), (142, 106, 70), speck=0.25)
+    ground("beton", (150, 148, 142), (178, 176, 170), speck=0.2)
+    polyhaven("trottoir", ["concrete_pavement", "concrete_floor_worn_001"], keywords=["concrete", "pavement"], avoid=["wall"])
+    if not os.path.exists(f"{OUT}/trottoir.jpg"):
+        ground("trottoir", (160, 158, 152), (186, 184, 178), speck=0.2)
+    ground("pole", (132, 130, 124), (160, 158, 150), speck=0.2)
+    solid("cable", (28, 28, 30), 8)
+    solid("ligne", (232, 232, 226), 8)
+    ground("water_surface", (58, 84, 90), (84, 108, 110), speck=0.06)
+    try:
+        lat = Image.open(f"{OUT}/laterite.jpg").convert("RGB")
+        ImageEnhance.Color(lat).enhance(1.35).save(f"{OUT}/falaise.jpg", quality=84)
+    except Exception as e:  # noqa
+        print("falaise :", e)
+
+
 def main():
     ground("grass", (86, 98, 52), (128, 120, 70))
     ground("laterite", (150, 82, 52), (118, 64, 44), pebbles=(186, 150, 120))
@@ -282,6 +354,7 @@ def main():
     bark("bark_light", (190, 180, 165), (150, 140, 125))
     for k in ("euc", "round", "pine", "ravi", "bush"):
         far(f"{k}", k)
+    user_assets()
     print("textures pretes :", len(os.listdir(OUT)), "fichiers", flush=True)
 
 

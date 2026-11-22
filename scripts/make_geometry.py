@@ -11,6 +11,8 @@ from scipy.spatial import cKDTree
 from shapely.geometry import LineString, Point, Polygon
 from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
+import atlas as atl
+import extras as ex3d
 from common import transformers, load_json, save_json
 
 STEP = 5.0          # m entre deux stations le long de la route
@@ -19,12 +21,13 @@ ROAD_HALF = 3.5     # demi-largeur de chaussee
 SHOULDER = 5.5      # fin de l'accotement
 W_MAX = 300.0       # demi-largeur du relief genere
 OFFS_POS = [3.5, 5.5, 8, 11, 15, 20, 27, 36, 48, 62, 80, 102, 130, 165, 210, 260, 300]
-TEXM = {"grass": 6, "laterite": 5, "rock": 8, "forest": 6, "paddy": 5, "mud": 5, "water": 10, "shoulder": 3}
+TEXM = {"grass": 6, "laterite": 5, "rock": 8, "forest": 6, "paddy": 5, "mud": 5, "water": 10, "shoulder": 3, "falaise": 8}
 KIND = {"road_main": "GND", "road_minor": "GND", "track": "GND"}
 for _m in TEXM:
     KIND[_m] = "GND"
-SH, GR, LA, RO, FO, PA, MU, WA = range(8)
-CLS = {SH: "shoulder", GR: "grass", LA: "laterite", RO: "rock", FO: "forest", PA: "paddy", MU: "mud", WA: "water"}
+KIND.update({"trottoir": "GND", "beton": "SOLID", "pole": "SOLID", "borne": "SOLID", "fuel": "SOLID"})
+SH, GR, LA, RO, FO, PA, MU, WA, CL = range(9)
+CLS = {SH: "shoulder", GR: "grass", LA: "laterite", RO: "rock", FO: "forest", PA: "paddy", MU: "mud", WA: "water", CL: "falaise"}
 
 
 class Acc:
@@ -56,6 +59,10 @@ def main():
     rng = np.random.default_rng(a.seed)
     road = load_json(f"{W}/road.json")
     osm = load_json(f"{W}/osm.json")
+    if os.path.exists(f"{W}/osm_extra.json"):
+        ex_ = load_json(f"{W}/osm_extra.json")
+        osm["ways"] += ex_["ways"]
+        osm["nodes"] += ex_["nodes"]
     D = np.load(f"{W}/dem.npz")
     fwd, inv = transformers()
     dem = D["dem"]
@@ -91,16 +98,24 @@ def main():
     tree = cKDTree(P)
     ntile = (n - 1) // TILE_ST + 1
 
-    def terrain_h(x, y):
+    CARVE = {"fn": None}
+
+    def terrain_h(x, y, carve=True):
         x = np.asarray(x, float)
         y = np.asarray(y, float)
-        d, i = tree.query(np.column_stack([x.ravel(), y.ravel()]))
+        xr, yr = x.ravel(), y.ravel()
+        d, i = tree.query(np.column_stack([xr, yr]))
         dh = dem_h(x, y).ravel()
         rh = ROADH[i]
         blend = np.clip(np.abs(dh - rh) * 1.6, 6, 45)
         t = np.clip((d - ROAD_HALF - 2.75) / blend, 0, 1)
         t = t * t * (3 - 2 * t)
-        return (rh * (1 - t) + dh * t).reshape(x.shape)
+        h = rh * (1 - t) + dh * t
+        micro = 0.30 * np.sin(xr * 0.19 + 1.0) * np.sin(yr * 0.23 - 0.5) + 0.20 * np.sin(xr * 0.07 + yr * 0.05)
+        h = h + micro * np.clip((d - 12) / 25, 0, 1)      # petites bosses naturelles loin de la route
+        if carve and CARVE["fn"] is not None:
+            h = h - CARVE["fn"](xr, yr)
+        return h.reshape(x.shape)
 
     def tile_of_xy(xy):
         _, i = tree.query(np.asarray(xy, float).reshape(-1, 2))
@@ -178,6 +193,66 @@ def main():
             acc[mat] = Acc()
         return acc[mat]
 
+    # ------------------------------------------------------------------ digues, rivieres, ponts
+    def regrade(h, g=0.09):
+        mx_ = g * STEP
+        for i_ in range(1, len(h)):
+            h[i_] = min(max(h[i_], h[i_ - 1] - mx_), h[i_ - 1] + mx_)
+        for i_ in range(len(h) - 2, -1, -1):
+            h[i_] = min(max(h[i_], h[i_ + 1] - mx_), h[i_ + 1] + mx_)
+
+    wet = np.zeros(n, bool)
+    for U_ in (U_farm, U_water):
+        if U_ is not None:
+            for off_ in (-14.0, 0.0, 14.0):
+                q_ = P + N * off_
+                wet |= shapely.contains_xy(U_, q_[:, 0], q_[:, 1])
+    ROADH += gaussian_filter1d(wet.astype(float) * 1.7, 12, mode="nearest")   # digue : route surelevee dans les rizieres
+    regrade(ROADH)
+    print(f"digues : {int(wet.sum()) * STEP:.0f} m de route en rizieres / zones d'eau", flush=True)
+
+    RIV = {"river": (7.0, 2.4), "canal": (4.0, 1.6), "stream": (2.5, 1.0), "drain": (1.5, 0.6)}
+    rivers = []
+    for w in osm["ways"]:
+        wt = w["tags"].get("waterway")
+        if wt in RIV and len(w["pts"]) >= 2:
+            ln_ = LineString(w["pts"])
+            if ln_.length > 4:
+                rivers.append((ln_, RIV[wt][0], RIV[wt][1], wt))
+    cp_, chw_, cdp_ = [], [], []
+    for ln_, hw_, dp_, wt_ in rivers:
+        for s_ in np.arange(0, ln_.length, 3.0):
+            q_ = ln_.interpolate(s_)
+            cp_.append((q_.x, q_.y))
+            chw_.append(hw_)
+            cdp_.append(dp_)
+    bridges = []
+    if cp_:
+        cp_, chw_, cdp_ = np.array(cp_), np.array(chw_), np.array(cdp_)
+        ctree_ = cKDTree(cp_)
+
+        def carve_fn(xr, yr):
+            d_, i_ = ctree_.query(np.column_stack([xr, yr]))
+            u_ = np.clip((d_ - chw_[i_]) / 3.0, 0, 1)
+            return cdp_[i_] * np.where(d_ <= chw_[i_], 1.0, 0.5 * (1 + np.cos(np.pi * u_)))
+        CARVE["fn"] = carve_fn
+        route_ls = LineString(P[::2])
+        for ln_, hw_, dp_, wt_ in rivers:
+            if hw_ < 4.0:
+                continue
+            it_ = route_ls.intersection(ln_)
+            pts_ = [it_] if it_.geom_type == "Point" else list(getattr(it_, "geoms", []))
+            for pt_ in pts_:
+                if pt_.geom_type != "Point":
+                    continue
+                ic_ = int(tree.query([pt_.x, pt_.y])[1])
+                half_ = int((hw_ + 6) / STEP) + 1
+                i0_, i1_ = max(ic_ - half_, 0), min(ic_ + half_, n - 1)
+                if i1_ - i0_ >= 4:
+                    ROADH[i0_:i1_ + 1] = np.linspace(ROADH[i0_], ROADH[i1_], i1_ - i0_ + 1)
+                    bridges.append((i0_, i1_))
+    print(f"cours d'eau : {len(rivers)}, ponts : {len(bridges)}", flush=True)
+
     # ------------------------------------------------------------------ relief (bande le long de la route)
     offs = np.array([-o for o in OFFS_POS[::-1]] + OFFS_POS)
     m = len(offs)
@@ -219,6 +294,10 @@ def main():
     cls = np.where(inside(U_wood, cx, cy), FO, cls)
     cls = np.where(inside(U_farm, cx, cy) & (slope < 14), PA, cls)
     cls = np.where(inside(U_rock, cx, cy) | (slope > 36), RO, cls)
+    zc_ = (Z[:-1, :-1] + Z[1:, :-1] + Z[1:, 1:] + Z[:-1, 1:]) / 4
+    _, qi_ = tree.query(np.column_stack([cx.ravel(), cy.ravel()]))
+    rel_ = zc_ - ROADH[qi_].reshape(cx.shape)
+    cls = np.where((rel_ > 1.5) & (slope > 24) & (offc <= 80), CL, cls)     # talus de deblai : falaise de laterite rouge
     cls = np.where(inside(U_water, cx, cy), WA, cls)
     cls = np.where(offc <= SHOULDER, SH, cls)
 
@@ -351,7 +430,7 @@ def main():
             ov = 0.35
             Aa, Bb = ax * (la + ov), bx * (lb + ov)
             ze = top - 0.1
-            ridge = float(np.clip(lb * 0.5, 0.9, 2.6))
+            ridge = float(np.clip(lb * (0.72 if rmat == "roof_tile" else 0.42), 1.0, 3.6))
 
             def pt(c, z):
                 return [c[0], c[1], z]
@@ -367,6 +446,16 @@ def main():
             GF = fix_out(GV, np.array([[0, 1, 2], [3, 4, 5]]), cen)
             GUV = np.column_stack([((GV[:, :2] - ctr) @ bx) / 4, (GV[:, 2] - base) / 3])
             A(wmat).add(GV, GUV, GF)
+            ang_ = math.atan2(ax[1], ax[0])
+            if rmat == "roof_tile" and rng.random() < 0.55:      # cheminee en briques
+                cxp = ctr + ax * (la * 0.45)
+                A("wall_brick").add(*ex3d.box(cxp[0], cxp[1], ze + ridge * 0.55, ang_, 0.28, 0.28, 1.6, 1.5))
+            if levels >= 2 and rng.random() < 0.7:             # balcon a l'etage avec garde-corps
+                sd_ = 1 if rng.random() < 0.5 else -1
+                bc_ = ctr + bx * sd_ * (lb + 0.6)
+                A("wall_white").add(*ex3d.box(bc_[0], bc_[1], base + 2.9, ang_, la * 0.6, 0.6, 0.14, 2.0, bottom=True))
+                rc_ = ctr + bx * sd_ * (lb + 1.15)
+                A("wall_white").add(*ex3d.box(rc_[0], rc_[1], base + 3.04, ang_, la * 0.6, 0.04, 0.95, 2.0))
         else:
             idx = np.array(earcut.triangulate_float64(ring.astype(np.float64), np.array([k], dtype=np.uint32))).reshape(-1, 3)
             RVv = np.column_stack([ring, np.full(k, top)])
@@ -377,12 +466,15 @@ def main():
     house_centers = []
     occupied = []
     n_osm = 0
+    mainline = LineString(P[::2])
     for p, t in bways:
         if p.area < 8 or p.area > 3000 or len(p.exterior.coords) > 60:
             continue
         c = p.centroid
         if not shapely.contains_xy(corridor, c.x, c.y):
             continue
+        if p.distance(mainline) < 7.0 or (U_minor is not None and shapely.intersects(U_minor, p)):
+            continue          # pas de maison sur la route ni sur une piste
         ring = np.array(orient(p, 1.0).exterior.coords)[:-1]
         try:
             lv = int(float(t.get("building:levels", "")))
@@ -398,6 +490,43 @@ def main():
         house_centers.append((c.x, c.y))
         n_osm += 1
     print(f"maisons OSM : {n_osm}", flush=True)
+
+    # --- stations-service et abribus (OpenStreetMap)
+    fuel_xy = []
+    for w in osm["ways"]:
+        if w["tags"].get("amenity") == "fuel" and len(w["pts"]) >= 3:
+            fuel_xy.append(np.array(w["pts"]).mean(0))
+    for nd in osm["nodes"]:
+        if nd["tags"].get("amenity") == "fuel":
+            fuel_xy.append(np.array(nd["pt"], float))
+    placed_f = []
+    for fx_, fy_ in fuel_xy:
+        if any(np.hypot(fx_ - a_, fy_ - b_) < 40 for a_, b_ in placed_f):
+            continue
+        d_, i_ = tree.query([fx_, fy_])
+        if d_ > 90 or not shapely.contains_xy(corridor, fx_, fy_):
+            continue
+        sd_ = 1.0 if (np.array([fx_, fy_]) - P[i_]) @ N[i_] >= 0 else -1.0
+        pos_ = P[i_] + N[i_] * sd_ * max(float(d_), 17.0)
+        zz_ = float(terrain_h(pos_[0], pos_[1]))
+        for fm_, fp_ in ex3d.fuel_station(pos_[0], pos_[1], zz_, float(heading[i_])).items():
+            KIND[fm_] = "SOLID"
+            A(fm_).add(*ex3d.merge(fp_))
+        occupied.append(Polygon(np.array(pos_) + np.array([[-9, -11], [9, -11], [9, 11], [-9, 11]])).buffer(1.0))
+        placed_f.append((fx_, fy_))
+    n_bus = 0
+    for nd in osm["nodes"]:
+        if nd["tags"].get("highway") == "bus_stop":
+            d_, i_ = tree.query(nd["pt"])
+            if d_ < 25:
+                sd_ = 1.0 if (np.array(nd["pt"]) - P[i_]) @ N[i_] >= 0 else -1.0
+                pos_ = P[i_] + N[i_] * sd_ * 8.0
+                zz_ = float(terrain_h(pos_[0], pos_[1]))
+                rf_, bd_ = ex3d.bus_shelter(pos_[0], pos_[1], zz_, float(heading[i_]))
+                A("roof_tin").add(*rf_)
+                A("pole").add(*bd_)
+                n_bus += 1
+    print(f"stations-service : {len(placed_f)}, abribus : {n_bus}", flush=True)
     occ_tree = shapely.STRtree(occupied) if occupied else None
     exist_xy = np.array(house_centers) if house_centers else np.zeros((0, 2))
 
@@ -466,6 +595,306 @@ def main():
     print(f"maisons ajoutees (villages) : {n_new}", flush=True)
     U_build = union(occupied + new_polys)
 
+    # ------------------------------------------------------------------ equipements de route
+    bp_ = np.array(house_centers) if house_centers else np.zeros((0, 2))
+    near_ = np.zeros(n, int)
+    if len(bp_):
+        near_ = np.array([len(v) for v in cKDTree(bp_).query_ball_point(P, 45.0)])
+    settle = near_ >= 3
+    town = near_ >= 8
+    for nd in osm["nodes"]:
+        if nd["tags"].get("place") in ("city", "town", "suburb"):
+            q_ = np.array(nd["pt"])
+            town |= np.hypot(P[:, 0] - q_[0], P[:, 1] - q_[1]) < 350
+    for i0_, i1_ in bridges:
+        town[max(i0_ - 4, 0):i1_ + 5] = False
+        settle[max(i0_ - 4, 0):i1_ + 5] = False
+
+    def runs(mask, minlen):
+        out_, i_ = [], 0
+        while i_ < n:
+            if mask[i_]:
+                j_ = i_
+                while j_ + 1 < n and mask[j_ + 1]:
+                    j_ += 1
+                if (j_ - i_) * STEP >= minlen:
+                    out_.append((i_, j_))
+                i_ = j_ + 1
+            else:
+                i_ += 1
+        return out_
+
+    def orient_faces(V_, F_, want):
+        tri_ = V_[F_]
+        nr_ = np.cross(tri_[:, 1] - tri_[:, 0], tri_[:, 2] - tri_[:, 0])
+        flip_ = (nr_ * want).sum(1) < 0
+        F_ = F_.copy()
+        F_[flip_] = F_[flip_][:, [0, 2, 1]]
+        return F_
+
+    # trottoirs : bordure de 15 cm + trottoir, des deux cotes, dans les villes
+    town_runs = runs(gaussian_filter1d(town.astype(float), 6) > 0.4, 80)
+    for i0_, i1_ in town_runs:
+        idx_ = np.arange(i0_, i1_ + 1)
+        m_ = len(idx_)
+        for sd_ in (-1, 1):
+            Vs_ = np.zeros((m_ * 3, 3))
+            UVs_ = np.zeros((m_ * 3, 2))
+            for c_, (o_, dz_) in enumerate(((3.5, 0.0), (3.5, 0.15), (5.2, 0.15))):
+                Vs_[c_::3, 0] = P[idx_, 0] + N[idx_, 0] * sd_ * o_
+                Vs_[c_::3, 1] = P[idx_, 1] + N[idx_, 1] * sd_ * o_
+                Vs_[c_::3, 2] = ROADH[idx_] + dz_
+                UVs_[c_::3, 0] = S[idx_] / 3.2
+                UVs_[c_::3, 1] = o_ / 3.2 + dz_
+            k_ = np.arange(m_ - 1)
+            for c_, want_top in ((0, False), (1, True)):
+                q0_, q1_, q2_, q3_ = k_ * 3 + c_, (k_ + 1) * 3 + c_, (k_ + 1) * 3 + c_ + 1, k_ * 3 + c_ + 1
+                F_ = np.concatenate([np.stack([q0_, q1_, q2_], 1), np.stack([q0_, q2_, q3_], 1)], 0)
+                if want_top:
+                    F_ = orient_faces(Vs_, F_, np.array([0.0, 0.0, 1.0]))
+                else:
+                    st_ = np.concatenate([k_, k_])
+                    F_ = orient_faces(Vs_, F_, np.column_stack([-sd_ * N[st_, 0], -sd_ * N[st_, 1], np.zeros(len(st_))]))
+                A("trottoir").add(Vs_, UVs_, F_)
+
+    # poteaux electriques : lignes OSM (power=line/minor_line) + poteaux le long des villages sans ligne connue
+    osm_poles = []
+    for nd in osm["nodes"]:
+        if nd["tags"].get("power") in ("pole", "tower"):
+            osm_poles.append(nd["pt"])
+
+    def add_pole_line(pts_):
+        prev_ = None
+        for k_, (px_, py_) in enumerate(pts_):
+            if not shapely.contains_xy(corridor, px_, py_):
+                prev_ = None
+                continue
+            a_, b_ = pts_[max(k_ - 1, 0)], pts_[min(k_ + 1, len(pts_) - 1)]
+            ang_ = math.atan2(b_[1] - a_[1], b_[0] - a_[0])
+            z_ = float(terrain_h(px_, py_))
+            (V_, UV_, F_), heads_ = ex3d.pole(px_, py_, z_, ang_)
+            A("pole").add(V_, UV_, F_)
+            if prev_ is not None:
+                dd_ = float(np.hypot(heads_[0][0] - prev_[0][0], heads_[0][1] - prev_[0][1]))
+                if dd_ < 160:
+                    for h0_, h1_ in zip(prev_, heads_):
+                        A("cable").add(*ex3d.cable(h0_, h1_, 0.015 * dd_))
+            prev_ = heads_
+    n_line = 0
+    for w in osm["ways"]:
+        if w["tags"].get("power") in ("line", "minor_line") and len(w["pts"]) >= 2:
+            add_pole_line([tuple(q) for q in w["pts"]])
+            osm_poles.extend(w["pts"])
+            n_line += 1
+    pole_tree = cKDTree(np.array(osm_poles)) if osm_poles else None
+    n_proc = 0
+    for i0_, i1_ in runs(gaussian_filter1d(settle.astype(float), 8) > 0.4, 100):
+        sd_ = 1 if rng.random() < 0.5 else -1
+        pts_ = []
+        for i_ in range(i0_, i1_ + 1, 8):
+            q_ = P[i_] + N[i_] * sd_ * 7.2
+            if pole_tree is None or pole_tree.query(q_)[0] > 30:
+                pts_.append((float(q_[0]), float(q_[1])))
+        if len(pts_) >= 2:
+            add_pole_line(pts_)
+            n_proc += len(pts_)
+    for q_ in osm_poles:
+        pass
+    print(f"lignes electriques OSM : {n_line}, poteaux ajoutes dans les villages : {n_proc}", flush=True)
+
+    # lampadaires (OSM + villes), bornes kilometriques, passages pietons
+    lamps_ = []
+    for nd in osm["nodes"]:
+        if nd["tags"].get("highway") == "street_lamp":
+            d_, i_ = tree.query(nd["pt"])
+            if d_ < 20:
+                lamps_.append((nd["pt"][0], nd["pt"][1], float(heading[i_]) + (math.pi / 2 if (np.array(nd["pt"]) - P[i_]) @ N[i_] < 0 else -math.pi / 2)))
+    for i0_, i1_ in town_runs:
+        for j_, i_ in enumerate(range(i0_, i1_ + 1, 8)):
+            sd_ = 1 if j_ % 2 == 0 else -1
+            q_ = P[i_] + N[i_] * sd_ * 4.9
+            lamps_.append((q_[0], q_[1], float(heading[i_]) + (-math.pi / 2 if sd_ > 0 else math.pi / 2)))
+    for lx_, ly_, la_ in lamps_:
+        if shapely.contains_xy(corridor, lx_, ly_):
+            A("pole").add(*ex3d.lamp(lx_, ly_, float(terrain_h(lx_, ly_)), la_))
+    n_zeb = 0
+    for nd in osm["nodes"]:
+        if nd["tags"].get("highway") == "crossing":
+            d_, i_ = tree.query(nd["pt"])
+            if d_ < 8 and i_ > 2:
+                for j_ in range(-3, 4):
+                    q_ = P[i_] + N[i_] * j_ * 1.0
+                    A("ligne").add(*ex3d.box(q_[0], q_[1], ROADH[i_] + 0.0, float(heading[i_]), 1.5, 0.25, 0.03, 1.0))
+                n_zeb += 1
+    print(f"lampadaires : {len(lamps_)}, passages pietons : {n_zeb}", flush=True)
+
+    # --- bornes kilometriques (sommet rouge + code de la route, corps blanc + ville + km), panneaux de villes
+    DEST = {"RN1": ("ANTANANARIVO", "TSIROANOMANDIDY")}
+    town_a, town_b = DEST.get(str(road["road"]).upper().replace(" ", ""), ("", ""))
+    code_ = str(road["road"]).upper().replace(" ", "")
+    km0_ = int(road["km_from"])
+    borne_at = atl.Atlas("borne", 256, 512)
+    n_bor = 0
+    for km_ in range(1, int(S[-1] / 1000) + 1):
+        i_ = int(np.argmin(np.abs(S - km_ * 1000)))
+        q_ = P[i_] - N[i_] * 7.0
+        mat_, uv_ = borne_at.add(lambda w_, h_, kk=km0_ + km_: atl.draw_borne(w_, h_, code_, town_a, kk, seed=kk))
+        KIND[mat_] = "SOLID"
+        A(mat_).add(*ex3d.skin_box(q_[0], q_[1], float(terrain_h(q_[0], q_[1])), float(heading[i_]) + math.pi / 2,
+                                   0.21, 0.13, 1.05, big=uv_, plain=(uv_[0] + 0.01, uv_[1] + 0.01)))
+        n_bor += 1
+    sign_at = atl.Atlas("panneau", 512, 192)
+    n_sig = 0
+
+    def put_sign(i_, side_, text_, style_, sub_=""):
+        nonlocal n_sig
+        if i_ < 3 or i_ > n - 4:
+            return
+        q_ = P[i_] + N[i_] * side_ * 6.8
+        if not shapely.contains_xy(corridor, q_[0], q_[1]):
+            return
+        z_ = float(terrain_h(q_[0], q_[1]))
+        mat_, uv_ = sign_at.add(lambda w_, h_: atl.draw_panneau(w_, h_, text_, style_, sub_))
+        KIND[mat_] = "SOLID"
+        for off_ in (-0.9, 0.9):
+            pp_ = q_ + (N[i_] * 0.0) + np.array([math.cos(heading[i_]), math.sin(heading[i_])]) * off_
+            A("pole").add(*ex3d.cylinder(pp_[0], pp_[1], z_, 2.6, 0.05, 0.05, 6))
+        A(mat_).add(*ex3d.skin_box(q_[0], q_[1], z_ + 1.75, float(heading[i_]) + math.pi / 2, 0.95, 0.02, 0.7, big=uv_,
+                                   plain=(uv_[0] + 0.01, uv_[1] + 0.01)))
+        n_sig += 1
+    PL_R = {"city": 220, "town": 180, "suburb": 150, "village": 140, "hamlet": 100}
+    named = []
+    for nd in osm["nodes"]:
+        nm_ = nd["tags"].get("name")
+        if nm_ and nd["tags"].get("place") in PL_R:
+            d_, i_ = tree.query(nd["pt"])
+            if d_ < 350 and nm_ not in [x_[0] for x_ in named]:
+                named.append((nm_, int(i_), PL_R[nd["tags"]["place"]]))
+    for nm_, i_, rr_ in named:
+        k_ = int(rr_ / STEP)
+        put_sign(i_ - k_, -1, nm_.upper(), "ville")          # arrivee dans le sens du km croissant (cote droit)
+        put_sign(i_ + k_, 1, nm_.upper(), "ville")           # arrivee dans l'autre sens (cote gauche)
+    if town_b:
+        for km_ in range(0, int(S[-1] / 1000) + 1, 5):
+            put_sign(int(np.argmin(np.abs(S - (km_ * 1000 + 400)))), -1, town_b, "dest", "→")
+    print(f"bornes : {n_bor}, panneaux : {n_sig}", flush=True)
+
+    # --- marches de bord de route, cash points, sacs de charbon (villages) + marches OSM
+    extra_fp = []
+    n_stall = n_cash = n_sacks = 0
+
+    def free_spot(x_, y_, r_=2.6):
+        if not shapely.contains_xy(corridor, x_, y_):
+            return False
+        if tree.query([x_, y_])[0] < 7.0:
+            return False
+        if U_build is not None and shapely.intersects(U_build, Point(x_, y_).buffer(r_)):
+            return False
+        if inside(U_water, x_, y_):
+            return False
+        return not any(np.hypot(x_ - e_[0], y_ - e_[1]) < e_[2] + r_ for e_ in extra_fp)
+
+    def put(parts_, x_, y_, r_):
+        for m_, plist_ in parts_.items():
+            if m_ not in KIND:
+                KIND[m_] = "DECOR" if m_ == "bache" else "SOLID"
+            A(m_).add(*ex3d.merge(plist_))
+        extra_fp.append((x_, y_, r_))
+
+    for i0_, i1_ in runs(gaussian_filter1d(settle.astype(float), 8) > 0.4, 100):
+        i_ = i0_ + int(rng.integers(10, 30))
+        while i_ < i1_:
+            if rng.random() < 0.65:
+                sd_ = 1 if rng.random() < 0.5 else -1
+                k_ = int(rng.integers(2, 6))
+                made = 0
+                for j_ in range(k_):
+                    ii_ = min(i_ + j_ * 1, n - 2)          # un etal tous les ~5 m (stations)
+                    q_ = P[ii_] + N[ii_] * sd_ * 8.6
+                    ang_ = float(heading[ii_]) + (math.pi if sd_ > 0 else 0.0)
+                    if free_spot(q_[0], q_[1], 1.6):
+                        z_ = float(terrain_h(q_[0], q_[1]))
+                        put(ex3d.stall(q_[0], q_[1], z_, ang_, rng, charcoal=bool(rng.random() < 0.3)), q_[0], q_[1], 1.6)
+                        n_stall += 1
+                        made += 1
+                if made:
+                    q_ = P[min(i_ + k_ + 2, n - 2)] + N[min(i_ + k_ + 2, n - 2)] * sd_ * 8.0
+                    ang_ = float(heading[min(i_ + k_ + 2, n - 2)]) + (math.pi if sd_ > 0 else 0.0)
+                    if rng.random() < 0.55 and free_spot(q_[0], q_[1], 1.2):
+                        put(ex3d.kiosk(q_[0], q_[1], float(terrain_h(q_[0], q_[1])), ang_), q_[0], q_[1], 1.2)
+                        n_cash += 1
+                    q2_ = P[max(i_ - 4, 0)] + N[max(i_ - 4, 0)] * sd_ * 8.0
+                    if rng.random() < 0.4 and free_spot(q2_[0], q2_[1], 2.0):
+                        put(ex3d.sack_pile(q2_[0], q2_[1], float(terrain_h(q2_[0], q2_[1])), float(heading[max(i_ - 4, 0)]), rng,
+                                           int(rng.integers(4, 8))), q2_[0], q2_[1], 2.0)
+                        n_sacks += 1
+            i_ += int(rng.integers(30, 70))             # un groupe tous les 150-350 m
+    # marches / cash points / commerces references par OpenStreetMap
+    for nd in osm["nodes"]:
+        t_ = nd["tags"]
+        pt_ = np.array(nd["pt"], float)
+        d_, i_ = tree.query(pt_)
+        if d_ > 70 or not shapely.contains_xy(corridor, pt_[0], pt_[1]):
+            continue
+        ang_ = float(heading[i_]) + (math.pi if (pt_ - P[i_]) @ N[i_] > 0 else 0.0)
+        if t_.get("amenity") in ("atm", "bank", "money_transfer") or "mobile" in str(t_.get("shop", "")):
+            if free_spot(pt_[0], pt_[1], 1.2):
+                put(ex3d.kiosk(pt_[0], pt_[1], float(terrain_h(pt_[0], pt_[1])), ang_), pt_[0], pt_[1], 1.2)
+                n_cash += 1
+        elif t_.get("amenity") == "marketplace":
+            for gx_ in range(-3, 4):
+                for gy_ in range(-2, 3):
+                    q_ = pt_ + np.array([gx_ * 4.2, gy_ * 4.2]) + rng.normal(0, 0.3, 2)
+                    if free_spot(q_[0], q_[1], 1.8):
+                        put(ex3d.stall(q_[0], q_[1], float(terrain_h(q_[0], q_[1])), float(heading[i_]) + (0 if rng.random() < 0.5 else math.pi),
+                                       rng, charcoal=bool(rng.random() < 0.2)), q_[0], q_[1], 1.8)
+                        n_stall += 1
+        elif "shop" in t_ and tree.query(pt_)[0] > 8.0:
+            if free_spot(pt_[0], pt_[1], 1.6):
+                put(ex3d.stall(pt_[0], pt_[1], float(terrain_h(pt_[0], pt_[1])), ang_, rng, charcoal=bool(rng.random() < 0.2)), pt_[0], pt_[1], 1.6)
+                n_stall += 1
+    print(f"etals : {n_stall}, cash points : {n_cash}, piles de sacs : {n_sacks}", flush=True)
+    atl_pages = borne_at.save(f"{W}/tex") + sign_at.save(f"{W}/tex")
+    U_build = union(occupied + new_polys + [Point(a_, b_).buffer(c_ + 0.5) for a_, b_, c_ in extra_fp])
+
+    # ponts : dalle de beton + garde-corps ; eau des rivieres
+    for i0_, i1_ in bridges:
+        for i_ in range(i0_, i1_):
+            mp_ = (P[i_] + P[i_ + 1]) / 2
+            ang_ = math.atan2(P[i_ + 1, 1] - P[i_, 1], P[i_ + 1, 0] - P[i_, 0])
+            hm_ = float(min(ROADH[i_], ROADH[i_ + 1]))
+            A("beton").add(*ex3d.box(mp_[0], mp_[1], hm_ - 0.85, ang_, 2.6, 4.1, 0.8, 3.0, bottom=True))
+            for sd_ in (-1, 1):
+                c_ = mp_ + N[i_] * sd_ * 3.65
+                A("beton").add(*ex3d.box(c_[0], c_[1], hm_, ang_, 2.6, 0.2, 0.95, 2.0))
+    n_riv = 0
+    for ln_, hw_, dp_, wt_ in rivers:
+        smp_ = np.array([ln_.interpolate(s_).coords[0] for s_ in np.arange(0, ln_.length, 4.0)] + [ln_.coords[-1]])
+        ok_ = shapely.contains_xy(corridor, smp_[:, 0], smp_[:, 1])
+        run_ = []
+        for q_, g_ in list(zip(smp_, ok_)) + [(None, False)]:
+            if g_:
+                run_.append(q_)
+                continue
+            if len(run_) >= 2:
+                r_ = np.array(run_)
+                lev_ = terrain_h(r_[:, 0], r_[:, 1], carve=False) - 0.45 * dp_
+                lev_ = gaussian_filter1d(lev_, 3, mode="nearest")
+                tg_ = np.gradient(r_, axis=0)
+                tg_ /= np.maximum(np.hypot(tg_[:, 0], tg_[:, 1]), 1e-9)[:, None]
+                nn_ = np.column_stack([-tg_[:, 1], tg_[:, 0]])
+                L_ = r_[:, None, :] + nn_[:, None, :] * np.array([-hw_ - 0.5, hw_ + 0.5])[None, :, None]
+                Vv_ = np.stack([L_[..., 0], L_[..., 1], np.repeat(lev_[:, None], 2, axis=1)], -1).reshape(-1, 3)
+                sd2_ = np.concatenate([[0], np.cumsum(np.hypot(*np.diff(r_, axis=0).T))])
+                UVv_ = np.stack([np.tile([0.0, 1.0], (len(r_), 1)), np.repeat((sd2_ / 8.0)[:, None], 2, axis=1)], -1).reshape(-1, 2)
+                kk_ = np.arange(len(r_) - 1)
+                Fv_ = np.concatenate([np.stack([2 * kk_, 2 * kk_ + 2, 2 * kk_ + 3], 1), np.stack([2 * kk_, 2 * kk_ + 3, 2 * kk_ + 1], 1)], 0)
+                Fv_ = orient_faces(Vv_, Fv_, np.array([0.0, 0.0, 1.0]))
+                A("water_surface").add(Vv_, UVv_, Fv_)
+                n_riv += 1
+            run_ = []
+    print(f"surfaces d'eau : {n_riv}", flush=True)
+
     # ------------------------------------------------------------------ vegetation
     # especes : 0 eucalyptus, 1 arbre rond (manguier...), 2 pin, 3 ravinala, 4 buisson
     def species_for(z, size):
@@ -480,12 +909,14 @@ def main():
 
     trees = []
 
-    def push(x, y, sp, sc):
+    def push(x, y, sp, sc, minoff=SHOULDER + 1.0):
         x = np.asarray(x)
         if len(x) == 0:
             return
         keepm = shapely.contains_xy(corridor, x, y) & ~inside(U_build, x, y) & ~inside(U_water, x, y)
-        keepm &= tree.query(np.column_stack([x, y]))[0] > SHOULDER + 1.0
+        keepm &= tree.query(np.column_stack([x, y]))[0] > minoff
+        if CARVE["fn"] is not None:
+            keepm &= CARVE["fn"](x, y) < 0.05
         if U_minor is not None:
             keepm &= ~shapely.intersects_xy(U_minor, x, y)
         x, y, sp, sc = x[keepm], y[keepm], np.asarray(sp)[keepm], np.asarray(sc)[keepm]
@@ -494,7 +925,7 @@ def main():
 
     dens_tree = {FO: 1 / 40, GR: 1 / 1100, LA: 1 / 2500}
     dens_bush = {FO: 1 / 80, GR: 1 / 300, LA: 1 / 600}
-    dens_grass = {GR: 0.10, PA: 0.12, FO: 0.03, LA: 0.02}   # touffes d'herbe : seulement pres de la route (45 m)
+    dens_grass = {GR: 0.18, PA: 0.15, FO: 0.10, LA: 0.06}   # touffes d'herbe : seulement pres de la route (45 m)
     for dd, kindv in ((dens_tree, "t"), (dens_bush, "b"), (dens_grass, "g")):
         for code, dv in dd.items():
             sel = keep & (cls == code)
@@ -503,7 +934,8 @@ def main():
             idx = np.where(sel.ravel())[0]
             if not len(idx):
                 continue
-            cnt = rng.poisson(qarea.ravel()[idx] * dv)
+            fac_ = np.where(offc.ravel()[idx] <= 12, 7.0, 1.0) if kindv == "g" else 1.0
+            cnt = rng.poisson(qarea.ravel()[idx] * dv * fac_)
             rep = np.repeat(idx, cnt)
             if not len(rep):
                 continue
@@ -514,7 +946,7 @@ def main():
             if kindv == "b":
                 push(pxy[:, 0], pxy[:, 1], np.full(len(rep), 4), rng.uniform(0.7, 1.5, len(rep)))
             elif kindv == "g":
-                push(pxy[:, 0], pxy[:, 1], np.full(len(rep), 5), rng.uniform(0.6, 1.2, len(rep)))
+                push(pxy[:, 0], pxy[:, 1], np.full(len(rep), 5), rng.uniform(0.6, 1.2, len(rep)), minoff=SHOULDER + 0.3)
             else:
                 sp = species_for(pxy[:, 2], len(rep))
                 push(pxy[:, 0], pxy[:, 1], sp, rng.uniform(0.75, 1.4, len(rep)))

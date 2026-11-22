@@ -53,7 +53,7 @@ jobs:
           touch run.log
           pip install -r requirements.txt 2>&1 | tail -3 | tee -a run.log
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libsm6 libxkbcommon0 libegl1 p7zip-full
+          sudo apt-get install -y -qq libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libsm6 libxkbcommon0 libegl1 p7zip-full fonts-dejavu-core
 
       - name: Cache Blender
         id: bcache
@@ -84,7 +84,10 @@ jobs:
           path: |
             work/osm.json
             work/road.json
-          key: osm-${{ inputs.road }}-${{ inputs.km_from }}-${{ inputs.km_to }}-${{ inputs.corridor }}-v1
+            work/osm_extra.json
+          key: osm-${{ inputs.road }}-${{ inputs.km_from }}-${{ inputs.km_to }}-${{ inputs.corridor }}-v2
+          restore-keys: |
+            osm-${{ inputs.road }}-${{ inputs.km_from }}-${{ inputs.km_to }}-${{ inputs.corridor }}-v
 
       - name: Download OSM + terrain
         run: |
@@ -92,14 +95,21 @@ jobs:
           if [ -n "${{ inputs.start_lat }}" ] && [ -n "${{ inputs.start_lon }}" ]; then EXTRA="--start-lat ${{ inputs.start_lat }} --start-lon ${{ inputs.start_lon }}"; fi
           python scripts/fetch_osm_dem.py --road "${{ inputs.road }}" --km-from "${{ inputs.km_from }}" --km-to "${{ inputs.km_to }}" --corridor "${{ inputs.corridor }}" $EXTRA --out work 2>&1 | tee -a run.log
 
+      - name: Check OSM cache files
+        id: osmok
+        if: always()
+        run: |
+          if [ -f work/osm.json ] && [ -f work/road.json ] && [ -f work/osm_extra.json ]; then echo "ok=true" >> "$GITHUB_OUTPUT"; fi
+
       - name: Save OSM cache
-        if: always() && hashFiles('work/osm.json') != ''
+        if: always() && steps.osmok.outputs.ok == 'true'
         uses: actions/cache/save@v4
         with:
           path: |
             work/osm.json
             work/road.json
-          key: osm-${{ inputs.road }}-${{ inputs.km_from }}-${{ inputs.km_to }}-${{ inputs.corridor }}-v1
+            work/osm_extra.json
+          key: osm-${{ inputs.road }}-${{ inputs.km_from }}-${{ inputs.km_to }}-${{ inputs.corridor }}-v2
 
       - name: Textures
         run: python scripts/textures.py work/tex 1024 2>&1 | tee -a run.log
