@@ -1,0 +1,112 @@
+name: Generate map
+
+on:
+  workflow_dispatch:
+    inputs:
+      road:
+        description: "Route (RN1, RN4...)"
+        default: "RN1"
+        required: true
+      km_from:
+        description: "Km de debut"
+        default: "0"
+        required: true
+      km_to:
+        description: "Km de fin"
+        default: "20"
+        required: true
+      corridor:
+        description: "Rayon des donnees OSM autour de la route (m)"
+        default: "320"
+      compress:
+        description: "safe = glTF standard (gdx-gltf) / max = Draco + WebP (le jeu doit les decoder)"
+        default: "safe"
+        type: choice
+        options: [safe, max]
+      start_lat:
+        description: "Optionnel : latitude du km 0"
+        default: ""
+      start_lon:
+        description: "Optionnel : longitude du km 0"
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          touch run.log
+          pip install -r requirements.txt 2>&1 | tail -3 | tee -a run.log
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libsm6 libxkbcommon0 libegl1 p7zip-full
+
+      - name: Cache Blender
+        id: bcache
+        uses: actions/cache@v4
+        with:
+          path: .blender
+          key: blender-4.2.3
+
+      - name: Install Blender
+        if: steps.bcache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p .blender
+          curl -L --retry 5 -o blender.tar.xz https://download.blender.org/release/Blender4.2/blender-4.2.3-linux-x64.tar.xz
+          tar -xf blender.tar.xz -C .blender --strip-components=1
+          rm blender.tar.xz
+
+      - name: Download OSM + terrain
+        run: |
+          EXTRA=""
+          if [ -n "${{ inputs.start_lat }}" ] && [ -n "${{ inputs.start_lon }}" ]; then EXTRA="--start-lat ${{ inputs.start_lat }} --start-lon ${{ inputs.start_lon }}"; fi
+          python scripts/fetch_osm_dem.py --road "${{ inputs.road }}" --km-from "${{ inputs.km_from }}" --km-to "${{ inputs.km_to }}" --corridor "${{ inputs.corridor }}" $EXTRA --out work 2>&1 | tee -a run.log
+
+      - name: Textures
+        run: python scripts/textures.py work/tex 1024 2>&1 | tee -a run.log
+
+      - name: Geometry (terrain, road, houses, villages, trees)
+        run: python scripts/make_geometry.py --work work 2>&1 | tee -a run.log
+
+      - name: Blender (assemble + export)
+        run: |
+          .blender/blender -b --factory-startup -noaudio -P scripts/blender_build.py -- --work work --out out --compress "${{ inputs.compress }}" 2>&1 | tee -a run.log
+
+      - name: Package (zip + 7z)
+        run: python scripts/package.py 2>&1 | tee -a run.log
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: map-${{ inputs.road }}-km${{ inputs.km_from }}-${{ inputs.km_to }}
+          path: dist/*
+          compression-level: 0
+
+      - name: Release (direct download link)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ inputs.road }}-km${{ inputs.km_from }}-${{ inputs.km_to }}-r${{ github.run_number }}"
+          gh release create "$TAG" dist/* --title "$TAG" --notes "Carte generee automatiquement (OpenStreetMap + Copernicus DEM). Voir manifest.json dans l'archive."
+
+      - name: Publish log
+        if: always()
+        run: |
+          mkdir -p /tmp/lg && tail -n 500 run.log > /tmp/lg/run.log || true
+          cd /tmp/lg && git init -q -b logs && git add . \
+            && git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "log ${{ github.run_id }}" \
+            && git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" logs || true

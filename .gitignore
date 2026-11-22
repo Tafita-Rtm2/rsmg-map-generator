@@ -1,0 +1,5 @@
+work/
+out/
+dist/
+.blender/
+__pycache__/
