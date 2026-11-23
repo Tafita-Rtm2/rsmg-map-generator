@@ -38,7 +38,10 @@ def get_mat(name, alpha=False, cull=True):
         nt.links.new(t.outputs["Color"], b.inputs["Base Color"])
         if alpha:
             nt.links.new(t.outputs["Alpha"], b.inputs["Alpha"])
-    b.inputs["Roughness"].default_value = 0.95
+    # rugosite par materiau : asphalte mat-poli, tole semi-brillante, eau lisse, reste mat
+    rough = {"road_main": 0.82, "road_minor": 0.88, "roof_tin": 0.55, "water": 0.12, "water_surface": 0.12,
+             "falaise": 1.0, "grass": 1.0, "laterite": 0.97, "shoulder": 0.98}.get(name, 0.95)
+    b.inputs["Roughness"].default_value = rough
     for nm in ("Specular IOR Level", "Specular"):
         if nm in b.inputs:
             b.inputs[nm].default_value = 0.05
