@@ -229,24 +229,39 @@ def dem_skadi(w, s, e, n, out):
     print("Relief : SRTM 30 m (secours)", dem.shape, flush=True)
 
 
+def _pbf_ok(path):
+    try:
+        if os.path.getsize(path) < 10_000_000:
+            return False
+        with open(path, "rb") as f:
+            return b"OSMHeader" in f.read(200)
+    except OSError:
+        return False
+
+
 def download_pbf(url, path):
-    if os.path.exists(path) and os.path.getsize(path) > 10_000_000:
+    """Telecharge l'extrait OSM de Madagascar : curl en IPv4 (les runners GitHub n'ont pas d'IPv6), plusieurs miroirs."""
+    import subprocess
+    if _pbf_ok(path):
         return path
-    last = None
-    for attempt in range(5):
-        try:
-            with requests.get(url, stream=True, timeout=(30, 300), headers=UA) as r:
-                r.raise_for_status()
-                with open(path, "wb") as f:
-                    for chunk in r.iter_content(1 << 20):
-                        f.write(chunk)
-            print(f"Extrait OSM Madagascar : {os.path.getsize(path) / 1e6:.0f} Mo", flush=True)
-            return path
-        except Exception as e:  # noqa
-            last = e
-            print("telechargement PBF : nouvel essai :", e, flush=True)
-            time.sleep(10 * (attempt + 1))
-    raise RuntimeError("Extrait Geofabrik indisponible : " + str(last))
+    urls = [url,
+            "https://download.openstreetmap.fr/extracts/africa/madagascar-latest.osm.pbf",
+            "https://download.openstreetmap.fr/extracts/africa/madagascar.osm.pbf",
+            "http://download.geofabrik.de/africa/madagascar-latest.osm.pbf"]
+    for rnd in range(3):
+        for u in urls:
+            print("telechargement PBF :", u, flush=True)
+            try:
+                r = subprocess.run(["curl", "-4", "-fL", "--retry", "2", "--connect-timeout", "30", "--max-time", "1200",
+                                    "-o", path, u], capture_output=True, text=True)
+                if r.returncode == 0 and _pbf_ok(path):
+                    print(f"Extrait OSM Madagascar : {os.path.getsize(path) / 1e6:.0f} Mo", flush=True)
+                    return path
+                print("  echec :", (r.stderr or "").strip()[-200:], flush=True)
+            except Exception as e:  # noqa
+                print("  echec :", e, flush=True)
+        time.sleep(15 * (rnd + 1))
+    raise RuntimeError("Extrait OSM de Madagascar introuvable sur les miroirs")
 
 
 def from_pbf(a, fwd):
