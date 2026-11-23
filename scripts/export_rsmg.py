@@ -26,9 +26,9 @@ KEY = {"grass": "herbe", "laterite": "laterite", "rock": "roche", "forest": "sol
        "mud": "boue", "water": "eau", "shoulder": "bord", "road_main": "route", "road_minor": "route_sec",
        "track": "piste", "wall_white": "mur_blanc", "wall_ochre": "mur_ocre", "wall_pink": "mur_rose",
        "wall_brick": "mur_brique", "wall_green": "mur_vert", "roof_tile": "toit_tuile", "roof_tin": "toit_tole"}
-TEXSIZE = {"road_main": (512, 2048), "wall_white": (256, 256), "wall_ochre": (256, 256), "wall_pink": (256, 256),
-           "wall_brick": (256, 256), "wall_green": (256, 256), "roof_tile": (256, 256), "roof_tin": (256, 256),
-           "road_minor": (256, 256), "track": (256, 256), "cable": (16, 16), "ligne": (16, 16), "water_surface": (256, 256), "pole": (256, 256), "beton": (256, 256), "bois": (256, 256), "trottoir": (256, 256)}
+TEXSIZE = {"road_main": (768, 3072), "wall_white": (512, 512), "wall_ochre": (512, 512), "wall_pink": (512, 512),
+           "wall_brick": (512, 512), "wall_green": (512, 512), "roof_tile": (512, 512), "roof_tin": (512, 512),
+           "road_minor": (512, 512), "track": (512, 512), "cable": (16, 16), "ligne": (16, 16), "water_surface": (256, 256), "pole": (512, 512), "beton": (512, 512), "bois": (512, 512), "trottoir": (512, 512)}
 GROUND = {"grass", "laterite", "rock", "forest", "paddy", "mud", "shoulder", "falaise", "water"}
 PREFIX = {"GND": "_gencol_ground", "SOLID": "solid", "DECOR": "_fake_decor"}
 

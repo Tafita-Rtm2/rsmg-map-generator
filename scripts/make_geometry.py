@@ -21,7 +21,7 @@ ROAD_HALF = 3.5     # demi-largeur de chaussee
 SHOULDER = 5.5      # fin de l'accotement
 W_MAX = 300.0       # demi-largeur du relief genere
 OFFS_POS = [3.5, 5.5, 8, 11, 15, 20, 27, 36, 48, 62, 80, 102, 130, 165, 210, 260, 300]
-TEXM = {"grass": 6, "laterite": 5, "rock": 8, "forest": 6, "paddy": 5, "mud": 5, "water": 10, "shoulder": 3, "falaise": 8}
+TEXM = {"grass": 8, "laterite": 6, "rock": 8, "forest": 7, "paddy": 6, "mud": 5, "water": 10, "shoulder": 3, "falaise": 9}
 KIND = {"road_main": "GND", "road_minor": "GND", "track": "GND"}
 for _m in TEXM:
     KIND[_m] = "GND"

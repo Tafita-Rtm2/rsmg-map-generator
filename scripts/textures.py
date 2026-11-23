@@ -4,11 +4,13 @@ Usage : textures.py <dossier> [taille]"""
 import io, os, sys
 import numpy as np
 import requests
+import texlib
 from PIL import Image, ImageDraw, ImageEnhance
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else "work/tex"
 SIZE = int(sys.argv[2]) if len(sys.argv) > 2 else 1024
 os.makedirs(OUT, exist_ok=True)
+USE_PH = os.environ.get("USE_POLYHAVEN") == "1"   # photos Poly Haven (herbe verte europeenne) : desactive par defaut
 rng = np.random.default_rng(11)
 UA = {"User-Agent": "rsmg-map-generator/1.0"}
 
@@ -298,6 +300,8 @@ def user_assets():
     for x in range(0, 128, 32):
         dt.rectangle([x, 0, x + 15, 127], fill=(30, 90, 170))
     t.save(f"{OUT}/bache.jpg", quality=90)
+    if not USE_PH:
+        return finish_assets()
     ground("bois", (110, 80, 52), (142, 106, 70), speck=0.25)
     polyhaven("brique", ["red_brick", "brick_wall_005", "brick_wall_001"], desat=0.85, keywords=["brick"], avoid=["floor", "roof"])
     if not os.path.exists(f"{OUT}/brique.jpg"):
@@ -307,9 +311,13 @@ def user_assets():
     if not os.path.exists(f"{OUT}/trottoir.jpg"):
         ground("trottoir", (160, 158, 152), (186, 184, 178), speck=0.2)
     ground("pole", (132, 130, 124), (160, 158, 150), speck=0.2)
+    ground("water_surface", (58, 84, 90), (84, 108, 110), speck=0.06)
+    finish_assets()
+
+
+def finish_assets():
     solid("cable", (28, 28, 30), 8)
     solid("ligne", (232, 232, 226), 8)
-    ground("water_surface", (58, 84, 90), (84, 108, 110), speck=0.06)
     try:
         lat = Image.open(f"{OUT}/laterite.jpg").convert("RGB")
         ImageEnhance.Brightness(ImageEnhance.Color(lat).enhance(0.8)).enhance(0.95).save(f"{OUT}/falaise.jpg", quality=84)
@@ -318,6 +326,19 @@ def user_assets():
 
 
 def main():
+    if not USE_PH:
+        texlib.build(OUT, SIZE)
+        for k in ("euc", "round", "pine", "ravi", "bush"):
+            far(f"{k}", k)
+        leaf("leaf_round", (58, 92, 44), (104, 128, 60))
+        leaf("leaf_euc", (88, 110, 86), (120, 138, 100))
+        leaf("leaf_pine", (34, 66, 44), (58, 92, 56))
+        leaf("leaf_ravi", (70, 122, 52), (110, 150, 70))
+        bark("bark", (88, 70, 56), (120, 100, 80))
+        bark("bark_light", (190, 180, 165), (150, 140, 125))
+        user_assets()
+        print("textures pretes :", len(os.listdir(OUT)), "fichiers", flush=True)
+        return
     ground("grass", (86, 98, 52), (128, 120, 70))
     ground("laterite", (150, 82, 52), (118, 64, 44), pebbles=(186, 150, 120))
     ground("rock", (118, 108, 98), (160, 150, 135), speck=0.3)
