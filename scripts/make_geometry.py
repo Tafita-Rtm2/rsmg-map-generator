@@ -20,7 +20,7 @@ TILE_ST = 400       # stations par troncon (2 km)
 ROAD_HALF = 3.5     # demi-largeur de chaussee
 SHOULDER = 5.5      # fin de l'accotement
 W_MAX = 300.0       # demi-largeur du relief genere
-OFFS_POS = [3.5, 5.5, 8, 11, 15, 20, 27, 36, 48, 62, 80, 102, 130, 165, 210, 260, 300]
+OFFS_POS = [3.5, 3.8, 5.5, 6.8, 8.0, 9.4, 11, 15, 20, 27, 36, 48, 62, 80, 102, 130, 165, 210, 260, 300]
 TEXM = {"grass": 8, "laterite": 6, "rock": 8, "forest": 7, "paddy": 6, "mud": 5, "water": 10, "shoulder": 3, "falaise": 9}
 KIND = {"road_main": "GND", "road_minor": "GND", "track": "GND"}
 for _m in TEXM:
@@ -28,6 +28,21 @@ for _m in TEXM:
 KIND.update({"trottoir": "GND", "beton": "SOLID", "pole": "SOLID", "borne": "SOLID", "fuel": "SOLID", "brique": "SOLID"})
 SH, GR, LA, RO, FO, PA, MU, WA, CL = range(9)
 CLS = {SH: "shoulder", GR: "grass", LA: "laterite", RO: "rock", FO: "forest", PA: "paddy", MU: "mud", WA: "water", CL: "falaise"}
+
+
+def edge_profile(a):
+    """Profil du bord de route (m, negatif = plus bas que la chaussee) en fonction de la distance a l'axe :
+    petite levre de bitume (6 cm) a 3,5 m, accotement incline jusqu'a 5,5 m (-12 cm), puis retour progressif au terrain."""
+    a = np.asarray(a, float)
+    lip = -0.06 * np.clip((a - 3.5) / 0.3, 0, 1)
+    slope_ = -0.06 * np.clip((a - 3.8) / 1.7, 0, 1)
+    return (lip + slope_) * np.exp(-np.maximum(a - 5.5, 0) / 3.0)
+
+
+def ditch_profile(a, depth=0.28):
+    """Cunette de drainage a ~8 m de l'axe (comme sur la RN1)."""
+    a = np.asarray(a, float)
+    return depth * np.exp(-((a - 8.0) / 1.7) ** 2)
 
 
 class Acc:
@@ -102,6 +117,7 @@ def main():
     ntile = (n - 1) // TILE_ST + 1
 
     CARVE = {"fn": None}
+    DITCH = {"f": None}      # 1 = cunette creusee, 0 = pas de cunette (rizieres, ponts)
 
     def terrain_h(x, y, carve=True):
         x = np.asarray(x, float)
@@ -116,6 +132,9 @@ def main():
         h = rh * (1 - t) + dh * t
         micro = 0.30 * np.sin(xr * 0.19 + 1.0) * np.sin(yr * 0.23 - 0.5) + 0.20 * np.sin(xr * 0.07 + yr * 0.05)
         h = h + micro * np.clip((d - 12) / 25, 0, 1)      # petites bosses naturelles loin de la route
+        flat = np.clip(1.0 - np.abs(dh - rh) / 2.5, 0, 1)   # pas de cunette dans les talus de deblai/remblai
+        fd = DITCH["f"][i] if DITCH["f"] is not None else 1.0
+        h = h + edge_profile(d) - ditch_profile(d) * flat * fd
         if carve and CARVE["fn"] is not None:
             h = h - CARVE["fn"](xr, yr)
         return h.reshape(x.shape)
@@ -257,6 +276,11 @@ def main():
     print(f"cours d'eau : {len(rivers)}, ponts : {len(bridges)}", flush=True)
 
     # ------------------------------------------------------------------ relief (bande le long de la route)
+    fdit = np.ones(n)
+    fdit[wet] = 0.0
+    for i0_, i1_ in bridges:
+        fdit[max(i0_ - 4, 0):i1_ + 5] = 0.0
+    DITCH["f"] = gaussian_filter1d(fdit, 3.0, mode="nearest")
     offs = np.array([-o for o in OFFS_POS[::-1]] + OFFS_POS)
     m = len(offs)
     jskip = len(OFFS_POS) - 1
@@ -269,7 +293,7 @@ def main():
     X = P[:, 0:1] + N[:, 0:1] * OE
     Y = P[:, 1:2] + N[:, 1:2] * OE
     Z = terrain_h(X, Y)
-    Z = np.where(np.abs(OE) <= SHOULDER + 0.01, ROADH[:, None], Z)
+    Z = np.where(np.abs(OE) <= SHOULDER + 0.01, ROADH[:, None] + edge_profile(np.abs(OE)), Z)
     Vall = np.stack([X, Y, Z], -1).reshape(-1, 3)
 
     ii, jj = np.meshgrid(np.arange(n - 1), np.arange(m - 1), indexing="ij")
@@ -303,6 +327,11 @@ def main():
     cls = np.where((rel_ > 1.5) & (slope > 24) & (offc <= 80), CL, cls)     # talus de deblai : falaise de laterite rouge
     cls = np.where(inside(U_water, cx, cy), WA, cls)
     cls = np.where(offc <= SHOULDER, SH, cls)
+    # largeur d'accotement irreguliere (sable/gravier qui deborde dans l'herbe, differente de chaque cote)
+    side_ = (jj >= jskip).astype(float)
+    ss_ = S[ii]
+    vw = SHOULDER + 2.4 * np.clip(0.5 + 0.55 * np.sin(ss_ * 0.061 + 1.7 + 2.3 * side_) * np.sin(ss_ * 0.017 + side_) + 0.3 * np.sin(ss_ * 0.23 + 4 * side_), 0, 1)
+    cls = np.where((offc <= vw) & (cls != WA) & (cls != CL), SH, cls)
 
     for code, name in CLS.items():
         sel = keep & (cls == code)
@@ -319,6 +348,7 @@ def main():
     RX = P[:, 0:1] + N[:, 0:1] * cols
     RY = P[:, 1:2] + N[:, 1:2] * cols
     RZ = np.repeat(ROADH[:, None], 3, axis=1)
+    RZ[:, 1] += 0.06                       # bombement de la chaussee (ecoulement de l'eau)
     RV = np.stack([RX, RY, RZ], -1).reshape(-1, 3)
     RUV = np.stack([np.tile([0.0, 0.5, 1.0], (n, 1)), np.repeat((S / 28.0)[:, None], 3, axis=1)], -1).reshape(-1, 2)
     ri, rj = np.meshgrid(np.arange(n - 1), np.arange(2), indexing="ij")
