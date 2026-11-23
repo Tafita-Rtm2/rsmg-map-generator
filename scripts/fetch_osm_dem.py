@@ -229,6 +229,63 @@ def dem_skadi(w, s, e, n, out):
     print("Relief : SRTM 30 m (secours)", dem.shape, flush=True)
 
 
+def download_pbf(url, path):
+    if os.path.exists(path) and os.path.getsize(path) > 10_000_000:
+        return path
+    last = None
+    for attempt in range(5):
+        try:
+            with requests.get(url, stream=True, timeout=(30, 300), headers=UA) as r:
+                r.raise_for_status()
+                with open(path, "wb") as f:
+                    for chunk in r.iter_content(1 << 20):
+                        f.write(chunk)
+            print(f"Extrait OSM Madagascar : {os.path.getsize(path) / 1e6:.0f} Mo", flush=True)
+            return path
+        except Exception as e:  # noqa
+            last = e
+            print("telechargement PBF : nouvel essai :", e, flush=True)
+            time.sleep(10 * (attempt + 1))
+    raise RuntimeError("Extrait Geofabrik indisponible : " + str(last))
+
+
+def from_pbf(a, fwd):
+    """Route + tous les objets autour, lus dans l'extrait complet de Madagascar (rapide, sans limite de longueur)."""
+    import osm_pbf
+    pbf = download_pbf(a.pbf_url, f"{a.out}/madagascar.osm.pbf")
+    wl = osm_pbf.road_ways(pbf, a.road)
+    if not wl:
+        sys.exit("Aucune route trouvee pour " + a.road)
+    G = nx.Graph()
+    pos = {}
+    for w in wl:
+        ids = [t[0] for t in w]
+        x, y = fwd.transform(np.array([t[1] for t in w]), np.array([t[2] for t in w]))
+        for nid, xx, yy in zip(ids, x, y):
+            pos[nid] = (float(xx), float(yy))
+        for p_, q_ in zip(ids[:-1], ids[1:]):
+            G.add_edge(p_, q_, weight=math.hypot(pos[p_][0] - pos[q_][0], pos[p_][1] - pos[q_][1]))
+    print(f"{a.road}: {len(wl)} troncons OSM, {G.number_of_nodes()} noeuds", flush=True)
+    if a.start_lat is not None and a.start_lon is not None:
+        start_ll = (a.start_lat, a.start_lon)
+    else:
+        start_ll = DEFAULT_START.get(a.road.upper().replace(" ", ""), (ORIGIN_LAT, ORIGIN_LON))
+    sx, sy = fwd.transform(start_ll[1], start_ll[0])
+    full = resample(main_path(G, pos, (sx, sy)), 5.0)
+    i0, i1 = int(a.km_from * 200), int(a.km_to * 200)
+    P = full[i0:i1 + 1]
+    if len(P) < 20:
+        sys.exit(f"Route trop courte ({len(full) * 5 / 1000:.1f} km) pour km {a.km_from}-{a.km_to}")
+    print(f"Troncon retenu : {len(P) * 5 / 1000:.1f} km (route complete : {len(full) * 5 / 1000:.1f} km)", flush=True)
+    ways, nodes = osm_pbf.features(pbf, P, fwd, int(a.corridor))
+    print(f"OSM : {len(ways)} lignes, {len(nodes)} points autour de la route", flush=True)
+    save_json(f"{a.out}/osm.json", {"ways": ways, "nodes": nodes})
+    save_json(f"{a.out}/osm_extra.json", {"ways": [], "nodes": []})
+    save_json(f"{a.out}/road.json", {"road": a.road, "km_from": a.km_from, "km_to": min(a.km_to, a.km_from + len(P) * 5 / 1000),
+                                     "origin": [ORIGIN_LAT, ORIGIN_LON], "pts": np.round(P, 2).tolist()})
+    return P
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--road", default="RN1")
@@ -238,12 +295,16 @@ def main():
     ap.add_argument("--start-lat", type=float, default=None)
     ap.add_argument("--start-lon", type=float, default=None)
     ap.add_argument("--out", default="work")
+    ap.add_argument("--source", default="pbf", choices=["pbf", "overpass"])
+    ap.add_argument("--pbf-url", default="https://download.geofabrik.de/africa/madagascar-latest.osm.pbf")
     a = ap.parse_args()
     fwd, inv = transformers()
 
     os.makedirs(a.out, exist_ok=True)
     rj, oj = f"{a.out}/road.json", f"{a.out}/osm.json"
-    if os.path.exists(rj) and os.path.exists(oj):
+    if a.source == "pbf":
+        P = from_pbf(a, fwd)
+    elif os.path.exists(rj) and os.path.exists(oj):
         # donnees OSM deja telechargees (cache GitHub) : on ne refait pas les ~30 min de requetes
         P = np.array(json.load(open(rj))["pts"], float)
         print(f"Donnees OSM en cache : {len(P) * 5 / 1000:.1f} km", flush=True)

@@ -12,17 +12,19 @@ on:
         default: "0"
         required: true
       km_to:
-        description: "Km de fin"
-        default: "20"
+        description: "Km de fin (250 = toute la route disponible, max ~200 km pour la RN1)"
+        default: "250"
         required: true
       corridor:
         description: "Rayon des donnees OSM autour de la route (m)"
         default: "320"
-      compress:
-        description: "safe = glTF standard (gdx-gltf) / max = Draco + WebP (le jeu doit les decoder)"
-        default: "safe"
-        type: choice
-        options: [safe, max]
+      grass:
+        description: "Densite d'herbe (1 = dense, 0.5 = moitie, 2 = tres dense)"
+        default: "1.0"
+      blender:
+        description: "Produire aussi le glTF Blender (inutile pour le jeu, plus long)"
+        type: boolean
+        default: false
       start_lat:
         description: "Optionnel : latitude du km 0"
         default: ""
@@ -36,7 +38,7 @@ permissions:
 jobs:
   generate:
     runs-on: ubuntu-latest
-    timeout-minutes: 330
+    timeout-minutes: 340
     defaults:
       run:
         shell: bash
@@ -53,9 +55,25 @@ jobs:
           touch run.log
           pip install -r requirements.txt 2>&1 | tail -3 | tee -a run.log
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libsm6 libxkbcommon0 libegl1 p7zip-full fonts-dejavu-core
+          sudo apt-get install -y -qq fonts-dejavu-core
+
+      - name: Download OSM (Geofabrik) + terrain
+        run: |
+          EXTRA=""
+          if [ -n "${{ inputs.start_lat }}" ] && [ -n "${{ inputs.start_lon }}" ]; then EXTRA="--start-lat ${{ inputs.start_lat }} --start-lon ${{ inputs.start_lon }}"; fi
+          python scripts/fetch_osm_dem.py --road "${{ inputs.road }}" --km-from "${{ inputs.km_from }}" --km-to "${{ inputs.km_to }}" --corridor "${{ inputs.corridor }}" $EXTRA --out work 2>&1 | tee -a run.log
+
+      - name: Textures
+        run: python scripts/textures.py work/tex 1024 2>&1 | tee -a run.log
+
+      - name: Geometry (terrain, road, houses, villages, equipment, vegetation)
+        run: python scripts/make_geometry.py --work work --grass "${{ inputs.grass }}" 2>&1 | tee -a run.log
+
+      - name: Export RSMG (native game format, single zip)
+        run: python scripts/export_rsmg.py 2>&1 | tee -a run.log
 
       - name: Cache Blender
+        if: inputs.blender
         id: bcache
         uses: actions/cache@v4
         with:
@@ -63,69 +81,25 @@ jobs:
           key: blender-4.2.3
 
       - name: Install Blender
-        if: steps.bcache.outputs.cache-hit != 'true'
+        if: inputs.blender && steps.bcache.outputs.cache-hit != 'true'
         run: |
+          sudo apt-get install -y -qq libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libsm6 libxkbcommon0 libegl1
           mkdir -p .blender
           F=blender-4.2.3-linux-x64.tar.xz
-          for BASE in https://download.blender.org/release https://mirrors.ocf.berkeley.edu/blender/release https://ftp.nluug.nl/pub/graphics/blender/release https://mirror.freedif.org/blender/release; do
-            echo "essai $BASE"
+          for BASE in https://download.blender.org/release https://mirrors.ocf.berkeley.edu/blender/release https://ftp.nluug.nl/pub/graphics/blender/release; do
             rm -f blender.tar.xz
             curl -fL --retry 3 --max-time 900 -o blender.tar.xz "$BASE/Blender4.2/$F" || continue
             if xz -t blender.tar.xz 2>/dev/null; then OK=1; break; fi
-            echo "archive invalide ($(stat -c%s blender.tar.xz) octets)"
           done
-          [ "${OK:-0}" = "1" ] || { echo "Blender introuvable sur les miroirs"; exit 1; }
+          [ "${OK:-0}" = "1" ] || { echo "Blender introuvable"; exit 1; }
           tar -xf blender.tar.xz -C .blender --strip-components=1
           rm blender.tar.xz
 
-      - name: Restore OSM cache
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            work/osm.json
-            work/road.json
-            work/osm_extra.json
-          key: osm-${{ inputs.road }}-${{ inputs.km_from }}-${{ inputs.km_to }}-${{ inputs.corridor }}-v2
-          restore-keys: |
-            osm-${{ inputs.road }}-${{ inputs.km_from }}-${{ inputs.km_to }}-${{ inputs.corridor }}-v
-
-      - name: Download OSM + terrain
+      - name: Blender glTF (optional)
+        if: inputs.blender
         run: |
-          EXTRA=""
-          if [ -n "${{ inputs.start_lat }}" ] && [ -n "${{ inputs.start_lon }}" ]; then EXTRA="--start-lat ${{ inputs.start_lat }} --start-lon ${{ inputs.start_lon }}"; fi
-          python scripts/fetch_osm_dem.py --road "${{ inputs.road }}" --km-from "${{ inputs.km_from }}" --km-to "${{ inputs.km_to }}" --corridor "${{ inputs.corridor }}" $EXTRA --out work 2>&1 | tee -a run.log
-
-      - name: Check OSM cache files
-        id: osmok
-        if: always()
-        run: |
-          if [ -f work/osm.json ] && [ -f work/road.json ] && [ -f work/osm_extra.json ]; then echo "ok=true" >> "$GITHUB_OUTPUT"; fi
-
-      - name: Save OSM cache
-        if: always() && steps.osmok.outputs.ok == 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            work/osm.json
-            work/road.json
-            work/osm_extra.json
-          key: osm-${{ inputs.road }}-${{ inputs.km_from }}-${{ inputs.km_to }}-${{ inputs.corridor }}-v2
-
-      - name: Textures
-        run: python scripts/textures.py work/tex 1024 2>&1 | tee -a run.log
-
-      - name: Geometry (terrain, road, houses, villages, trees)
-        run: python scripts/make_geometry.py --work work 2>&1 | tee -a run.log
-
-      - name: Export RSMG (format natif du jeu)
-        run: python scripts/export_rsmg.py 2>&1 | tee -a run.log
-
-      - name: Blender (assemble + export)
-        run: |
-          .blender/blender -b --factory-startup -noaudio -P scripts/blender_build.py -- --work work --out out --compress "${{ inputs.compress }}" 2>&1 | tee -a run.log
-
-      - name: Package (zip + 7z)
-        run: python scripts/package.py 2>&1 | tee -a run.log
+          .blender/blender -b --factory-startup -noaudio -P scripts/blender_build.py -- --work work --out out --compress safe 2>&1 | tee -a run.log
+          python scripts/package.py 2>&1 | tee -a run.log
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -139,7 +113,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${{ inputs.road }}-km${{ inputs.km_from }}-${{ inputs.km_to }}-r${{ github.run_number }}"
-          gh release create "$TAG" dist/* --title "$TAG" --notes "Carte generee automatiquement (OpenStreetMap + Copernicus DEM). Voir manifest.json dans l'archive."
+          gh release create "$TAG" dist/* --title "$TAG" --notes "Carte RSMG generee automatiquement (OpenStreetMap + Copernicus DEM). A extraire dans /sdcard/ (le zip contient deja RSMG/maps/...)."
 
       - name: Publish log
         if: always()

@@ -19,16 +19,17 @@ DIST = "dist"
 MAX_VERTS = 60000        # par objet 3DS (limite 65535)
 MAX_FACES = 20000        # par morceau avant regroupement
 MAX_TRIS_FILE = 120000   # par fichier .3ds
-MAX_TREES = 40000        # arbres (T/P) sur toute la carte
-MAX_UNDER = 500000       # buissons + herbe sur toute la carte (herbe dense au bord des routes)
+MAX_TREES = 10**9        # arbres (T/P) sur toute la carte
+MAX_UNDER = 10**9       # buissons + herbe sur toute la carte (herbe dense au bord des routes)
 
 KEY = {"grass": "herbe", "laterite": "laterite", "rock": "roche", "forest": "sol_foret", "paddy": "riziere",
        "mud": "boue", "water": "eau", "shoulder": "bord", "road_main": "route", "road_minor": "route_sec",
        "track": "piste", "wall_white": "mur_blanc", "wall_ochre": "mur_ocre", "wall_pink": "mur_rose",
        "wall_brick": "mur_brique", "wall_green": "mur_vert", "roof_tile": "toit_tuile", "roof_tin": "toit_tole"}
-TEXSIZE = {"road_main": (512, 1024), "wall_white": (256, 256), "wall_ochre": (256, 256), "wall_pink": (256, 256),
+TEXSIZE = {"road_main": (512, 2048), "wall_white": (256, 256), "wall_ochre": (256, 256), "wall_pink": (256, 256),
            "wall_brick": (256, 256), "wall_green": (256, 256), "roof_tile": (256, 256), "roof_tin": (256, 256),
            "road_minor": (256, 256), "track": (256, 256), "cable": (16, 16), "ligne": (16, 16), "water_surface": (256, 256), "pole": (256, 256), "beton": (256, 256), "bois": (256, 256), "trottoir": (256, 256)}
+GROUND = {"grass", "laterite", "rock", "forest", "paddy", "mud", "shoulder", "falaise", "water"}
 PREFIX = {"GND": "_gencol_ground", "SOLID": "solid", "DECOR": "_fake_decor"}
 
 
@@ -136,7 +137,7 @@ def main():
                 V[:, 0] += tx - ox
                 V[:, 1] += ty - oy
                 UV = np.array(d["uv"], float).reshape(-1, 2)
-                UV[:, 1] = 1.0 - UV[:, 1]            # le .3ds est en V vers le haut (le jeu relit 1 - v)
+                # V en 'haut = 1' tel quel : le jeu relit 1 - V (sinon textes et logos sont a l'envers)
                 F = np.array(d["f"], int).reshape(-1, 3)
                 key = KEY.get(mat, mat)
                 used_mats.add((mat, key))
@@ -282,7 +283,7 @@ def main():
             if max(im.size) > 1024:
                 im.thumbnail((1024, 1024), Image.LANCZOS)
         else:
-            im = im.resize(TEXSIZE.get(mat, (512, 512)), Image.LANCZOS)
+            im = im.resize(TEXSIZE.get(mat, (1024, 1024) if mat in GROUND else (512, 512)), Image.LANCZOS)
         im.save(f"{base}/{name}/textures/{key}.png", optimize=True)
 
     # apercu : vue du dessus de la route et des arrets
@@ -306,11 +307,6 @@ def main():
             for fn in files:
                 full = os.path.join(rt, fn)
                 z.write(full, os.path.relpath(full, ROOT))
-    try:
-        subprocess.run(["7z", "a", "-t7z", "-mx=9", "-m0=lzma2", "-md=64m", "-ms=on",
-                        os.path.abspath(f"{DIST}/{name}_RSMG.7z"), "RSMG"], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
-    except Exception as e:  # noqa
-        print("7z indisponible :", e)
     for fn in sorted(os.listdir(DIST)):
         print(fn, round(os.path.getsize(f"{DIST}/{fn}") / 1e6, 2), "Mo")
 

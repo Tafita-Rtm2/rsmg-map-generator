@@ -1,0 +1,5 @@
+RSMG rn1_km0-4 : 2 fichier(s) .3ds, 10 objets, 90098 faces
+textures manquantes : bache, beton, bois, cable, cashpoint, jovena_boutique, jovena_entretien, jovena_logo, jovena_panneau, jovena_pompe, jovena_prix, jovena_rouge, ligne, marchandise, pole, sac_charbon, trottoir, water_surface
+fichiers de vegetation : 2
+Proton Bus : 4 chemin(s) de trafic (284 points), 3 arret(s), 4 point(s) de depart
+BUSSID : 2 troncon(s) .obj, 35 materiaux, collision 82680 faces

@@ -25,7 +25,7 @@ TEXM = {"grass": 6, "laterite": 5, "rock": 8, "forest": 6, "paddy": 5, "mud": 5,
 KIND = {"road_main": "GND", "road_minor": "GND", "track": "GND"}
 for _m in TEXM:
     KIND[_m] = "GND"
-KIND.update({"trottoir": "GND", "beton": "SOLID", "pole": "SOLID", "borne": "SOLID", "fuel": "SOLID"})
+KIND.update({"trottoir": "GND", "beton": "SOLID", "pole": "SOLID", "borne": "SOLID", "fuel": "SOLID", "brique": "SOLID"})
 SH, GR, LA, RO, FO, PA, MU, WA, CL = range(9)
 CLS = {SH: "shoulder", GR: "grass", LA: "laterite", RO: "rock", FO: "forest", PA: "paddy", MU: "mud", WA: "water", CL: "falaise"}
 
@@ -53,6 +53,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--work", default="work")
     ap.add_argument("--max-trees", type=int, default=600000)
+    ap.add_argument("--grass", type=float, default=1.0)
+    ap.add_argument("--grass-cap", type=int, default=60000)
+    ap.add_argument("--tree-cap", type=int, default=6000)
     ap.add_argument("--seed", type=int, default=7)
     a = ap.parse_args()
     W = a.work
@@ -288,7 +291,7 @@ def main():
     qarea = 0.5 * np.linalg.norm(nv, axis=-1)
 
     noise = np.sin(cx * 0.011 + 1.3) * np.sin(cy * 0.0093 + 0.4) + 0.5 * np.sin(cx * 0.031 + cy * 0.027)
-    cls = np.where(noise > -0.25, GR, LA)
+    cls = np.where(noise > -0.9, GR, LA)
     cls = np.where(inside(U_resid, cx, cy), LA, cls)
     cls = np.where((slope > 24) & (slope <= 36), FO, cls)
     cls = np.where(inside(U_wood, cx, cy), FO, cls)
@@ -389,7 +392,7 @@ def main():
         F[flip] = F[flip][:, [0, 2, 1]]
         return F
 
-    def add_house(ring, levels, wmat, rmat):
+    def add_house(ring, levels, wmat, rmat, style="gable"):
         ring = np.asarray(ring, float)
         k = len(ring)
         hz = terrain_h(ring[:, 0], ring[:, 1])
@@ -426,6 +429,8 @@ def main():
                     ax, bx, la, lb = e1 / l1, e2 / l2, l1 / 2, l2 / 2
                 else:
                     ax, bx, la, lb = e2 / l2, e1 / l1, l2 / 2, l1 / 2
+        if style == "villa":
+            gable = False
         if gable:
             ov = 0.35
             Aa, Bb = ax * (la + ov), bx * (lb + ov)
@@ -436,16 +441,24 @@ def main():
                 return [c[0], c[1], z]
             pPP, pMP = pt(ctr + Aa + Bb, ze), pt(ctr - Aa + Bb, ze)
             pMM, pPM = pt(ctr - Aa - Bb, ze), pt(ctr + Aa - Bb, ze)
-            rP, rM = pt(ctr + Aa, ze + ridge), pt(ctr - Aa, ze + ridge)
-            RVv = np.array([pPP, pMP, rM, rP, pMM, pPM, rP, rM])
-            RFv = np.array([[0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7]])
+            hip = style == "hip" and la > lb * 1.15
+            if hip:                                   # toit en croupe : 4 pans, faitage raccourci
+                rl = max(la - lb, 0.3)
+                rP, rM = pt(ctr + ax * rl, ze + ridge), pt(ctr - ax * rl, ze + ridge)
+                RVv = np.array([pPP, pMP, pMM, pPM, rP, rM])
+                RFv = np.array([[0, 1, 5], [0, 5, 4], [2, 3, 4], [2, 4, 5], [3, 0, 4], [1, 2, 5]])
+            else:
+                rP, rM = pt(ctr + Aa, ze + ridge), pt(ctr - Aa, ze + ridge)
+                RVv = np.array([pPP, pMP, rM, rP, pMM, pPM, rP, rM])
+                RFv = np.array([[0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7]])
             RFv = fix_out(RVv, RFv, cen)
             RUV = np.column_stack([((RVv[:, :2] - ctr) @ ax) / 3, ((RVv[:, :2] - ctr) @ bx) / 3])
             A(rmat).add(RVv, RUV, RFv)
-            GV = np.array([pPM, pPP, rP, pMP, pMM, rM])
-            GF = fix_out(GV, np.array([[0, 1, 2], [3, 4, 5]]), cen)
-            GUV = np.column_stack([((GV[:, :2] - ctr) @ bx) / 4, (GV[:, 2] - base) / 3])
-            A(wmat).add(GV, GUV, GF)
+            if not hip:
+                GV = np.array([pPM, pPP, rP, pMP, pMM, rM])
+                GF = fix_out(GV, np.array([[0, 1, 2], [3, 4, 5]]), cen)
+                GUV = np.column_stack([((GV[:, :2] - ctr) @ bx) / 4, (GV[:, 2] - base) / 3])
+                A(wmat).add(GV, GUV, GF)
             ang_ = math.atan2(ax[1], ax[0])
             if rmat == "roof_tile" and rng.random() < 0.55:      # cheminee en briques
                 cxp = ctr + ax * (la * 0.45)
@@ -461,7 +474,37 @@ def main():
             RVv = np.column_stack([ring, np.full(k, top)])
             RFv = fix_out(RVv, idx, cen)
             A(rmat).add(RVv, ring / 3, RFv)
+            if style == "villa":                                       # acrotere autour du toit-terrasse
+                for q0_, q1_ in zip(ring, np.roll(ring, -1, axis=0)):
+                    ln_ = float(np.hypot(*(q1_ - q0_)))
+                    if ln_ > 0.3:
+                        mid_ = (q0_ + q1_) / 2
+                        A("wall_white").add(*ex3d.box(mid_[0], mid_[1], top, math.atan2(q1_[1] - q0_[1], q1_[0] - q0_[0]), ln_ / 2, 0.1, 0.6, 2.0))
         return poly
+
+    def add_fence(c, ax, bx, ha, hb, to_road):
+        """Mur de cloture en briques autour d'une maison (3 cotes + portail du cote de la route)."""
+        c = np.asarray(c, float)
+        cor = [c - ax * ha - bx * hb, c + ax * ha - bx * hb, c + ax * ha + bx * hb, c - ax * ha + bx * hb]
+        hz_ = terrain_h(np.array([q[0] for q in cor]), np.array([q[1] for q in cor]))
+        z0_ = float(hz_.min()) - 0.3
+        sides = [(0, 1, -bx), (1, 2, ax), (2, 3, bx), (3, 0, -ax)]
+        for i0f, i1f, outn in sides:
+            p0f, p1f = cor[i0f], cor[i1f]
+            ln_ = float(np.hypot(*(p1f - p0f)))
+            ang_f = math.atan2(p1f[1] - p0f[1], p1f[0] - p0f[0])
+            if float(np.dot(outn, to_road)) > 0.7:                     # cote de la route : portail de 3 m au milieu
+                g_ = 1.5
+                for sgn in (-1, 1):
+                    a_f = (ln_ / 2 - g_) / 2
+                    if a_f > 0.3:
+                        mid_f = (p0f + p1f) / 2 + (p1f - p0f) / ln_ * sgn * (g_ + a_f)
+                        A("brique").add(*ex3d.box(mid_f[0], mid_f[1], z0_, ang_f, a_f, 0.12, 1.9, 1.2))
+            elif float(np.dot(outn, to_road)) > -0.7:
+                mid_f = (p0f + p1f) / 2
+                A("brique").add(*ex3d.box(mid_f[0], mid_f[1], z0_, ang_f, ln_ / 2, 0.12, 1.9, 1.2))
+        for q_ in cor:
+            A("brique").add(*ex3d.box(q_[0], q_[1], z0_, 0.0, 0.2, 0.2, 2.2, 1.2))
 
     house_centers = []
     occupied = []
@@ -491,6 +534,13 @@ def main():
         n_osm += 1
     print(f"maisons OSM : {n_osm}", flush=True)
 
+    def orient_faces_up(V_, F_):
+        tri_ = V_[F_]
+        nr_ = np.cross(tri_[:, 1] - tri_[:, 0], tri_[:, 2] - tri_[:, 0])
+        F_ = F_.copy()
+        F_[nr_[:, 2] < 0] = F_[nr_[:, 2] < 0][:, [0, 2, 1]]
+        return F_
+
     # --- stations-service et abribus (OpenStreetMap)
     fuel_xy = []
     for w in osm["ways"]:
@@ -507,12 +557,29 @@ def main():
         if d_ > 90 or not shapely.contains_xy(corridor, fx_, fy_):
             continue
         sd_ = 1.0 if (np.array([fx_, fy_]) - P[i_]) @ N[i_] >= 0 else -1.0
-        pos_ = P[i_] + N[i_] * sd_ * max(float(d_), 17.0)
-        zz_ = float(terrain_h(pos_[0], pos_[1]))
-        for fm_, fp_ in ex3d.fuel_station(pos_[0], pos_[1], zz_, float(heading[i_])).items():
+        pos_ = P[i_] + N[i_] * sd_ * max(float(d_), 22.0)
+        ang_s = float(heading[i_]) + (math.pi if sd_ > 0 else 0.0)      # le devant (+b) regarde la route, la boutique est derriere
+        ax_s = np.array([math.cos(ang_s), math.sin(ang_s)])
+        bx_s = np.array([-ax_s[1], ax_s[0]])
+        gx_ = np.array([pos_ + ax_s * a_ + bx_s * b_ for a_ in (-12, 0, 12) for b_ in (-14, 0, 14)])
+        zz_ = float(np.clip(terrain_h(gx_[:, 0], gx_[:, 1]).mean(), ROADH[i_] - 0.5, ROADH[i_] + 1.0)) + 0.03
+        # dalle (asphalte) + soubassement en beton + acces depuis la route
+        cor_ = [pos_ - ax_s * 12 - bx_s * 14, pos_ + ax_s * 12 - bx_s * 14, pos_ + ax_s * 12 + bx_s * 14, pos_ - ax_s * 12 + bx_s * 14]
+        Vp_ = np.array([[q_[0], q_[1], zz_] for q_ in cor_])
+        A("road_minor").add(Vp_, np.array([[q_[0] / 6, q_[1] / 6] for q_ in cor_]), orient_faces_up(Vp_, np.array([[0, 1, 2], [0, 2, 3]])))
+        A("beton").add(*ex3d.box(pos_[0], pos_[1], zz_ - 1.6, ang_s, 12.0, 14.0, 1.58, 3.0))
+        to_road_ = -sd_ * N[i_]
+        e_pt_ = pos_ + to_road_ * 14.0
+        r_pt_ = P[i_] + N[i_] * sd_ * 5.4
+        tg_ = np.array([math.cos(heading[i_]), math.sin(heading[i_])])
+        cd_ = [r_pt_ - tg_ * 5.0, r_pt_ + tg_ * 5.0, e_pt_ + tg_ * 5.0, e_pt_ - tg_ * 5.0]
+        zr_ = float(ROADH[i_]) + 0.02
+        Vd_ = np.array([[cd_[0][0], cd_[0][1], zr_], [cd_[1][0], cd_[1][1], zr_], [cd_[2][0], cd_[2][1], zz_ + 0.01], [cd_[3][0], cd_[3][1], zz_ + 0.01]])
+        A("road_minor").add(Vd_, np.array([[q_[0] / 6, q_[1] / 6] for q_ in Vd_[:, :2]]), orient_faces_up(Vd_, np.array([[0, 1, 2], [0, 2, 3]])))
+        for fm_, fp_ in ex3d.fuel_station(pos_[0], pos_[1], zz_, ang_s).items():
             KIND[fm_] = "SOLID"
             A(fm_).add(*ex3d.merge(fp_))
-        occupied.append(Polygon(np.array(pos_) + np.array([[-9, -11], [9, -11], [9, 11], [-9, 11]])).buffer(1.0))
+        occupied.append(Polygon(cor_).buffer(1.0))
         placed_f.append((fx_, fy_))
     n_bus = 0
     for nd in osm["nodes"]:
@@ -544,8 +611,10 @@ def main():
     for p in resid:
         zones.append((p, 8, np.array([p.centroid.x, p.centroid.y]), math.sqrt(p.area / math.pi)))
     new_polys = []
+    new_grid = {}
     n_new = 0
     for geom, dens, ctr, rad in zones:
+        zone_town = dens >= 11
         g = geom.intersection(corridor)
         if g.is_empty:
             continue
@@ -562,12 +631,12 @@ def main():
             if len(zi) and rng.random() < 0.6:
                 i = int(rng.choice(zi))
                 side = rng.choice([-1, 1])
-                c = P[i] + N[i] * side * rng.uniform(9.5, 24)
+                c = P[i] + N[i] * side * rng.uniform(12.5, 26)
                 ang = heading[i] + rng.normal(0, 0.1)
             else:
                 c = ctr + rng.normal(0, rad * 0.45, 2)
                 ang = rng.uniform(0, math.pi)
-                if tree.query(c)[0] < 9.5:
+                if tree.query(c)[0] < 12.5:
                     continue
             if not shapely.contains_xy(g, c[0], c[1]):
                 continue
@@ -578,7 +647,9 @@ def main():
             poly = Polygon(ring).buffer(1.5, join_style=2)
             if occ_tree is not None and len(occ_tree.query(poly, predicate="intersects")):
                 continue
-            if new_polys and shapely.intersects(poly, np.array(new_polys, dtype=object)).any():
+            gk_ = (int(c[0] // 40), int(c[1] // 40))
+            near_new = [q_ for dx_ in (-1, 0, 1) for dy_ in (-1, 0, 1) for q_ in new_grid.get((gk_[0] + dx_, gk_[1] + dy_), ())]
+            if near_new and shapely.intersects(poly, np.array(near_new, dtype=object)).any():
                 continue
             if inside(U_water, c[0], c[1]) or (U_minor is not None and shapely.intersects(U_minor, poly)):
                 continue
@@ -587,8 +658,23 @@ def main():
                 continue
             wmat, rmat = pick_mats(float(hh.mean()))
             lv = int(rng.choice([1, 2, 3], p=[0.55, 0.38, 0.07]) if highland else rng.choice([1, 2], p=[0.8, 0.2]))
-            add_house(ring, lv, wmat, rmat)
+            style = str(rng.choice(["gable", "hip", "villa", "L"], p=[0.5, 0.17, 0.12 if highland or zone_town else 0.05, 0.21 if highland or zone_town else 0.28]))
+            if style == "villa":
+                lv = max(lv, 2)
+                rmat = "roof_tin"
+            add_house(ring, lv, wmat, rmat, "gable" if style == "L" else style)
+            if style == "L":                                           # aile perpendiculaire en L
+                wl_, wb_ = rng.uniform(1.8, 2.8), rng.uniform(1.6, 2.2)
+                sg_ = 1 if rng.random() < 0.5 else -1
+                wc_ = c + ax * (la - wb_) * (-sg_) + bx * (lb + wl_ - 0.4)
+                ring_w = np.array([wc_ - bx * wl_ - ax * wb_, wc_ + bx * wl_ - ax * wb_, wc_ + bx * wl_ + ax * wb_, wc_ - bx * wl_ + ax * wb_])
+                if not (occ_tree is not None and len(occ_tree.query(Polygon(ring_w).buffer(1.0), predicate="intersects"))):
+                    add_house(ring_w, 1, wmat, rmat, "gable")
+            if rng.random() < 0.45:
+                tr_ = P[int(tree.query(c)[1])] - c
+                add_fence(c, ax, bx, la + 1.8, lb + 1.8, tr_ / max(float(np.hypot(*tr_)), 1e-6))
             new_polys.append(poly)
+            new_grid.setdefault(gk_, []).append(poly)
             house_centers.append((c[0], c[1]))
             placed += 1
             n_new += 1
@@ -741,7 +827,7 @@ def main():
         mat_, uv_ = borne_at.add(lambda w_, h_, kk=km0_ + km_: atl.draw_borne(w_, h_, code_, town_a, kk, seed=kk))
         KIND[mat_] = "SOLID"
         A(mat_).add(*ex3d.skin_box(q_[0], q_[1], float(terrain_h(q_[0], q_[1])), float(heading[i_]) + math.pi / 2,
-                                   0.21, 0.13, 1.05, big=uv_, plain=(uv_[0] + 0.01, uv_[1] + 0.01)))
+                                   0.27, 0.16, 1.2, big=uv_, plain=(uv_[0] + 0.01, uv_[1] + 0.01)))
         n_bor += 1
     sign_at = atl.Atlas("panneau", 512, 192)
     n_sig = 0
@@ -781,6 +867,7 @@ def main():
 
     # --- marches de bord de route, cash points, sacs de charbon (villages) + marches OSM
     extra_fp = []
+    ens_at = atl.Atlas("enseigne", 512, 128)
     n_stall = n_cash = n_sacks = 0
 
     def free_spot(x_, y_, r_=2.6):
@@ -828,6 +915,17 @@ def main():
                         put(ex3d.sack_pile(q2_[0], q2_[1], float(terrain_h(q2_[0], q2_[1])), float(heading[max(i_ - 4, 0)]), rng,
                                            int(rng.integers(4, 8))), q2_[0], q2_[1], 2.0)
                         n_sacks += 1
+            if rng.random() < 0.4:                     # epicerie / hotely / boutique avec enseigne
+                sd_ = 1 if rng.random() < 0.5 else -1
+                ish_ = min(i_ + int(rng.integers(8, 20)), n - 2)
+                q_ = P[ish_] + N[ish_] * sd_ * 10.0
+                if free_spot(q_[0], q_[1], 2.6):
+                    txt_ = str(rng.choice(["EPICERIE", "HOTELY", "BOUTIQUE", "MOBILE MONEY", "PHARMACIE", "QUINCAILLERIE", "BAR", "SALON DE COIFFURE", "MARCHE"]))
+                    emat_, euv_ = ens_at.add(lambda w_, h_, tt=txt_: atl.draw_panneau(w_, h_, tt, "shop"))
+                    KIND[emat_] = "SOLID"
+                    put(ex3d.shop(q_[0], q_[1], float(terrain_h(q_[0], q_[1])), float(heading[ish_]) + (math.pi if sd_ > 0 else 0.0), rng, emat_, euv_,
+                                  str(rng.choice(["wall_ochre", "wall_pink", "wall_white", "wall_green"]))), q_[0], q_[1], 2.6)
+                    n_stall += 1
             i_ += int(rng.integers(30, 70))             # un groupe tous les 150-350 m
     # marches / cash points / commerces references par OpenStreetMap
     for nd in osm["nodes"]:
@@ -854,7 +952,7 @@ def main():
                 put(ex3d.stall(pt_[0], pt_[1], float(terrain_h(pt_[0], pt_[1])), ang_, rng, charcoal=bool(rng.random() < 0.2)), pt_[0], pt_[1], 1.6)
                 n_stall += 1
     print(f"etals : {n_stall}, cash points : {n_cash}, piles de sacs : {n_sacks}", flush=True)
-    atl_pages = borne_at.save(f"{W}/tex") + sign_at.save(f"{W}/tex")
+    atl_pages = borne_at.save(f"{W}/tex") + sign_at.save(f"{W}/tex") + ens_at.save(f"{W}/tex")
     U_build = union(occupied + new_polys + [Point(a_, b_).buffer(c_ + 0.5) for a_, b_, c_ in extra_fp])
 
     # ponts : dalle de beton + garde-corps ; eau des rivieres
@@ -923,33 +1021,53 @@ def main():
         z = terrain_h(x, y) if len(x) else np.zeros(0)
         trees.append(np.column_stack([sp, x, y, z, sc, rng.uniform(0, 6.283, len(x))]))
 
-    dens_tree = {FO: 1 / 40, GR: 1 / 1100, LA: 1 / 2500}
-    dens_bush = {FO: 1 / 80, GR: 1 / 300, LA: 1 / 600}
-    dens_grass = {GR: 0.18, PA: 0.15, FO: 0.10, LA: 0.06}   # touffes d'herbe : seulement pres de la route (45 m)
-    for dd, kindv in ((dens_tree, "t"), (dens_bush, "b"), (dens_grass, "g")):
-        for code, dv in dd.items():
-            sel = keep & (cls == code)
+    TREE_D = {FO: 1 / 40, GR: 1 / 1100, LA: 1 / 2500}
+    BUSH_D = {FO: 1 / 80, GR: 1 / 300, LA: 1 / 600, CL: 1 / 250, RO: 1 / 900}
+    # touffes d'herbe par m2 : (jusqu'a 15 m de la route, jusqu'a 60 m, au-dela)
+    GRASS_D = {GR: (1.0, 0.30, 0.03), PA: (1.0, 0.40, 0.06), FO: (0.8, 0.5, 0.15), LA: (0.4, 0.10, 0.015),
+               CL: (0.15, 0.10, 0.03), RO: (0.03, 0.03, 0.01), MU: (0.3, 0.1, 0.01)}
+    veg_rows = []
+    gcap = int(a.grass_cap * a.grass)
+    for t_ in range(ntile):
+        r0_, r1_ = t_ * TILE_ST, min((t_ + 1) * TILE_ST, n - 1)
+        if r1_ <= r0_:
+            continue
+        sl_ = slice(r0_, r1_)
+        cls_t, off_t, area_t, keep_t = cls[sl_], offc[sl_], qarea[sl_], keep[sl_]
+        Q_ = [arr[sl_].reshape(-1, 3) for arr in (V0, V1, V2, V3)]
+        for kindv in ("t", "b", "g"):
+            dq = np.zeros(cls_t.shape)
             if kindv == "g":
-                sel = sel & (offc <= 45)
-            idx = np.where(sel.ravel())[0]
-            if not len(idx):
+                for code, (d1_, d2_, d3_) in GRASS_D.items():
+                    dq = np.where(cls_t == code, np.where(off_t <= 15, d1_, np.where(off_t <= 60, d2_, d3_)), dq)
+            else:
+                for code, dv in (TREE_D if kindv == "t" else BUSH_D).items():
+                    dq = np.where(cls_t == code, dv, dq)
+            cnt = rng.poisson(area_t * dq * keep_t).ravel()
+            rep_ = np.repeat(np.arange(len(cnt)), cnt)
+            if not len(rep_):
                 continue
-            fac_ = np.where(offc.ravel()[idx] <= 12, 7.0, 1.0) if kindv == "g" else 1.0
-            cnt = rng.poisson(qarea.ravel()[idx] * dv * fac_)
-            rep = np.repeat(idx, cnt)
-            if not len(rep):
-                continue
-            u, v = rng.random(len(rep)), rng.random(len(rep))
-            q0, q1, q2, q3 = (arr.reshape(-1, 3)[rep] for arr in (V0, V1, V2, V3))
+            u, v = rng.random(len(rep_)), rng.random(len(rep_))
+            q0, q1, q2, q3 = (q[rep_] for q in Q_)
             pxy = ((1 - u)[:, None] * (1 - v)[:, None] * q0 + u[:, None] * (1 - v)[:, None] * q1
                    + u[:, None] * v[:, None] * q2 + (1 - u)[:, None] * v[:, None] * q3)
+            mark = len(trees)
             if kindv == "b":
-                push(pxy[:, 0], pxy[:, 1], np.full(len(rep), 4), rng.uniform(0.7, 1.5, len(rep)))
+                push(pxy[:, 0], pxy[:, 1], np.full(len(rep_), 4), rng.uniform(0.7, 1.5, len(rep_)))
             elif kindv == "g":
-                push(pxy[:, 0], pxy[:, 1], np.full(len(rep), 5), rng.uniform(0.6, 1.2, len(rep)), minoff=SHOULDER + 0.3)
+                push(pxy[:, 0], pxy[:, 1], np.full(len(rep_), 5), rng.uniform(0.6, 1.3, len(rep_)), minoff=SHOULDER + 0.25)
             else:
-                sp = species_for(pxy[:, 2], len(rep))
-                push(pxy[:, 0], pxy[:, 1], sp, rng.uniform(0.75, 1.4, len(rep)))
+                push(pxy[:, 0], pxy[:, 1], species_for(pxy[:, 2], len(rep_)), rng.uniform(0.75, 1.4, len(rep_)))
+            got = np.vstack(trees[mark:]) if len(trees) > mark else np.zeros((0, 6))
+            del trees[mark:]
+            if kindv == "g" and len(got) > gcap:        # priorite aux touffes les plus proches de la route
+                dist_ = tree.query(got[:, 1:3])[0] + rng.uniform(0, 25, len(got))
+                got = got[np.argsort(dist_)[:gcap]]
+            elif kindv == "t" and len(got) > a.tree_cap:
+                got = got[rng.choice(len(got), a.tree_cap, replace=False)]
+            elif kindv == "b" and len(got) > 2 * a.tree_cap:
+                got = got[rng.choice(len(got), 2 * a.tree_cap, replace=False)]
+            veg_rows.append(got)
     # alignements d'arbres le long de la route
     for side in (-1, 1):
         ii_ = np.arange(int(rng.integers(0, 5)), n, 3)
@@ -971,9 +1089,7 @@ def main():
     if tn:
         tn = np.array(tn)
         push(tn[:, 0], tn[:, 1], np.ones(len(tn), int), rng.uniform(0.9, 1.3, len(tn)))
-    TR = np.vstack(trees) if trees else np.zeros((0, 6))
-    if len(TR) > a.max_trees:
-        TR = TR[rng.choice(len(TR), a.max_trees, replace=False)]
+    TR = np.vstack(veg_rows + trees) if (veg_rows or trees) else np.zeros((0, 6))
     print(f"arbres : {len(TR)}", flush=True)
 
     # ------------------------------------------------------------------ decoupage en troncons et ecriture

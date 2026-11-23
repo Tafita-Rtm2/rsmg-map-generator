@@ -80,7 +80,12 @@ def draw_borne(w, h, code, town, km, seed=0):
 
 
 def draw_panneau(w, h, text, style="ville", sub=""):
-    if style == "ville":
+    if style == "shop":
+        im = Image.new("RGB", (w, h), (250, 214, 60))
+        d = ImageDraw.Draw(im)
+        d.rectangle([0, 0, w - 1, h - 1], outline=(190, 30, 36), width=max(6, h // 12))
+        fg = (190, 30, 36)
+    elif style == "ville":
         im = Image.new("RGB", (w, h), (246, 246, 242))
         d = ImageDraw.Draw(im)
         d.rectangle([0, 0, w - 1, h - 1], outline=(200, 30, 36), width=max(8, h // 14))

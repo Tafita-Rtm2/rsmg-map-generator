@@ -252,3 +252,28 @@ def sack_pile(x, y, z, ang, rng, n=6):
         out.append(skin_box(px, py, z + row * 0.8, ang + float(rng.normal(0, 0.12)), 0.26, 0.17, 0.8,
                             big=(0, 0, 0.5, 1), plain=(0.75, 0.5)))
     return {"sac_charbon": out}
+
+
+def shop(x, y, z, ang, rng, sign_mat, sign_uv, wall="wall_ochre"):
+    """Epicerie / hotely / boutique de bord de route : local 3,6 x 3 m, auvent de toile, comptoir avec marchandises, enseigne."""
+    ax = np.array([math.cos(ang), math.sin(ang)])
+    bx = np.array([-ax[1], ax[0]])
+    parts = {}
+
+    def add(m, p):
+        parts.setdefault(m, []).append(p)
+
+    def at(a, b, zz):
+        return [x + ax[0] * a + bx[0] * b, y + ax[1] * a + bx[1] * b, z + zz]
+    add(wall, box(x, y, z, ang, 1.8, 1.5, 2.7, 3.0))
+    add("roof_tin", box(x, y, z + 2.7, ang, 2.1, 1.8, 0.15, 3.0))
+    add("bache", quad2(at(-2.0, 1.5, 2.45), at(2.0, 1.5, 2.45), at(2.0, 2.7, 2.1), at(-2.0, 2.7, 2.1)))
+    add("bois", box(x + bx[0] * 1.95, y + bx[1] * 1.95, z, ang, 1.4, 0.3, 0.9, 1.0))
+    for i in range(int(rng.integers(4, 8))):
+        a = -1.2 + i * 0.4
+        cell = float(rng.integers(0, 8)) / 8.0 + 1 / 16.0
+        add("marchandise", skin_box(x + ax[0] * a + bx[0] * 1.95, y + ax[1] * a + bx[1] * 1.95, z + 0.9, ang, 0.17, 0.2,
+                                    float(rng.uniform(0.15, 0.4)), big=None, plain=(cell, 0.5)))
+    add(sign_mat, skin_box(x + bx[0] * 1.56, y + bx[1] * 1.56, z + 2.0, ang, 1.2, 0.03, 0.5, big=sign_uv,
+                           plain=(sign_uv[0] + 0.01, sign_uv[1] + 0.01)))
+    return parts

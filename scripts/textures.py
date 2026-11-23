@@ -299,6 +299,9 @@ def user_assets():
         dt.rectangle([x, 0, x + 15, 127], fill=(30, 90, 170))
     t.save(f"{OUT}/bache.jpg", quality=90)
     ground("bois", (110, 80, 52), (142, 106, 70), speck=0.25)
+    polyhaven("brique", ["red_brick", "brick_wall_005", "brick_wall_001"], desat=0.85, keywords=["brick"], avoid=["floor", "roof"])
+    if not os.path.exists(f"{OUT}/brique.jpg"):
+        ground("brique", (150, 78, 56), (178, 98, 70), speck=0.3)
     ground("beton", (150, 148, 142), (178, 176, 170), speck=0.2)
     polyhaven("trottoir", ["concrete_pavement", "concrete_floor_worn_001"], keywords=["concrete", "pavement"], avoid=["wall"])
     if not os.path.exists(f"{OUT}/trottoir.jpg"):
@@ -309,7 +312,7 @@ def user_assets():
     ground("water_surface", (58, 84, 90), (84, 108, 110), speck=0.06)
     try:
         lat = Image.open(f"{OUT}/laterite.jpg").convert("RGB")
-        ImageEnhance.Color(lat).enhance(1.35).save(f"{OUT}/falaise.jpg", quality=84)
+        ImageEnhance.Brightness(ImageEnhance.Color(lat).enhance(0.8)).enhance(0.95).save(f"{OUT}/falaise.jpg", quality=84)
     except Exception as e:  # noqa
         print("falaise :", e)
 
@@ -326,7 +329,7 @@ def main():
 
     # photos reelles CC0 (Poly Haven) quand c'est possible : remplacent les textures procedurales
     polyhaven("grass", ["leafy_grass", "aerial_grass_rock", "grass_path_2"], desat=0.8, keywords=["grass"], avoid=["snow", "dry_grass", "dead"])
-    polyhaven("laterite", ["red_laterite_soil_stones", "aerial_mud_1", "brown_mud_dry"], keywords=["laterite", "red", "clay"], avoid=["brick", "wall"])
+    polyhaven("laterite", ["red_laterite_soil_stones", "aerial_mud_1", "brown_mud_dry"], desat=0.75, keywords=["laterite", "red", "clay"], avoid=["brick", "wall"])
     polyhaven("rock", ["rock_boulder_cracked", "aerial_rocks_02", "rocky_terrain_02"], keywords=["rock", "cliff"], avoid=["wall", "tile"])
     polyhaven("forest", ["forrest_ground_01", "brown_mud_leaves_01"], desat=0.85, keywords=["forest", "leaves", "ground"], avoid=["snow"])
     polyhaven("mud", ["brown_mud", "aerial_mud_1"], keywords=["mud"])
