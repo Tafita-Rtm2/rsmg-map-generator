@@ -30,8 +30,9 @@ TEXSIZE = {"road_main": (512, 2048), "wall_white": (256, 256), "wall_ochre": (25
            "wall_brick": (256, 256), "wall_green": (256, 256), "roof_tile": (256, 256), "roof_tin": (256, 256),
            "road_minor": (256, 256), "track": (256, 256), "cable": (16, 16), "ligne": (16, 16), "water_surface": (256, 256), "pole": (256, 256), "beton": (256, 256), "bois": (256, 256), "trottoir": (256, 256)}
 GROUND = {"grass", "grass2", "laterite", "rock", "forest", "paddy", "mud", "shoulder", "falaise", "water"}
-CARDS = os.environ.get("RSMG_CARDS", "1") != "0"     # arbres / buissons / herbes = plans croises photo (RSMG_CARDS=0 : modeles du jeu)
-CAP_TILE = {"T": 2500, "B": 1500, "G": 3000}         # cartes max par troncon de 2 km
+CARDS_MODE = os.environ.get("RSMG_CARDS", "auto")          # auto = cartes photo seulement si la carte fait <= 25 km ; 1 = toujours ; 0 = jamais
+CARDS_MAX_KM = 25     # arbres / buissons / herbes = plans croises photo (RSMG_CARDS=0 : modeles du jeu)
+CAP_TILE = {"T": 1200, "B": 800, "G": 1800}         # cartes max par troncon de 2 km
 GROUP_OF = {0: ("pine",), 1: ("round",), 2: ("fir",), 3: ("round",), 4: ("bush", "bush", "weed"), 5: ("grass", "grass", "grass", "weed")}
 PREFIX = {"GND": "_gencol_ground", "SOLID": "solid", "DECOR": "_fake_decor"}
 
@@ -84,9 +85,9 @@ def write3ds(mats, objects):
 
 
 # ----------------------------------------------------------------------------- vegetation en cartes croisees (photos a fond transparent)
-def load_veg():
+def load_veg(enabled):
     p = f"{W}/tex/veg_meta.json"
-    if not (CARDS and os.path.exists(p)):
+    if not (enabled and os.path.exists(p)):
         return None
     meta = json.load(open(p))
     groups = {}
@@ -165,9 +166,11 @@ def main():
     os.makedirs(f"{base}/{name}/textures", exist_ok=True)
     os.makedirs(tiles_dir, exist_ok=True)
     rng = np.random.default_rng(5)
-    VEG = load_veg()
+    km_total = len(R) * 5 / 1000.0
+    use_cards = CARDS_MODE == "1" or (CARDS_MODE == "auto" and km_total <= CARDS_MAX_KM)
+    VEG = load_veg(use_cards)
     used_cards = set()
-    print("vegetation : cartes photo" if VEG else "vegetation : modeles du jeu (trees.txt)", flush=True)
+    print(f"vegetation : cartes photo dans les .3ds ({km_total:.0f} km)" if VEG else f"vegetation : trees.txt, streamee par le jeu autour du bus ({km_total:.0f} km)", flush=True)
 
     n = len(R)
     T = np.gradient(R[:, :2], axis=0)
