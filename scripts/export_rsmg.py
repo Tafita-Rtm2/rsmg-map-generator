@@ -155,19 +155,16 @@ def pieces(V, UV, F):
         yield V[used], UV[used], inv.reshape(-1, 3)
 
 
-def main():
-    man = json.load(open(f"{W}/manifest.json"))
-    osm = json.load(open(f"{W}/osm.json"))
-    R = np.loadtxt(f"{W}/route.csv", delimiter=",", skiprows=1)      # x, y, z, km
-    ox, oy = R[0, 0], R[0, 1]
-    name = re.sub(r"[^a-z0-9_-]+", "_", f"{man['road']}_km{man['km_from']:g}-{man['km_to']:g}".lower()).strip("_")
+def export_part(man, osm, R, tiles, name, use_cards):
+    """Ecrit UNE carte RSMG (dossier RSMG/maps/<name>) pour les troncons `tiles`, origine recentree sur son debut."""
+    s_first, s_last = tiles[0]["station_from"], tiles[-1]["station_to"]
+    ox, oy = R[s_first, 0], R[s_first, 1]
     base = f"{ROOT}/RSMG/maps"
     tiles_dir = f"{base}/{name}/tiles/{name}"
     os.makedirs(f"{base}/{name}/textures", exist_ok=True)
     os.makedirs(tiles_dir, exist_ok=True)
     rng = np.random.default_rng(5)
-    km_total = len(R) * 5 / 1000.0
-    use_cards = CARDS_MODE == "1" or (CARDS_MODE == "auto" and km_total <= CARDS_MAX_KM)
+    km_total = (s_last - s_first) * 5 / 1000.0
     VEG = load_veg(use_cards)
     used_cards = set()
     print(f"vegetation : cartes photo dans les .3ds ({km_total:.0f} km)" if VEG else f"vegetation : trees.txt, streamee par le jeu autour du bus ({km_total:.0f} km)", flush=True)
@@ -179,7 +176,7 @@ def main():
     used_mats = set()
     traffic_no = 0
     trees_all = []
-    for t in man["tiles"]:
+    for t in tiles:
         ti = t["index"]
         tx, ty = t["origin_xy"]
         data = json.load(open(f"{W}/tiles/tile_{ti:02d}.json"))
@@ -328,11 +325,11 @@ def main():
         i0 = max(j - 1, 0)
         dx, dz = R[j, 0] - R[i0, 0], -(R[j, 1] - R[i0, 1])
         return math.degrees(math.atan2(dx, dz))
-    i0 = min(10, n - 1)
+    i0 = min(s_first + 10, n - 1)
     x, z, y = game_pos(i0)
     open(f"{base}/{name}/spawnpoints.txt", "w").write(
         f"# Point de depart de la carte {name}\nDepart {x:.2f} {y + 0.5:.2f} {z:.2f} {heading(i0):.1f}\n")
-    stops = [(f"Debut {man['road']}", i0)]
+    stops = [(f"Km {man['km_from'] + R[i0, 3]:.0f} {man['road']}", i0)]
     tree = None
     try:
         from scipy.spatial import cKDTree
@@ -346,10 +343,10 @@ def main():
             if not nm or nd["tags"].get("place") not in ("city", "town", "village", "hamlet", "suburb", "neighbourhood"):
                 continue
             d, i = tree.query(nd["pt"])
-            if d < 350 and nm not in seen and 5 < i < n - 5:
+            if d < 350 and nm not in seen and s_first + 5 < i < s_last - 5:
                 seen.add(nm)
                 stops.append((nm, int(i)))
-    stops.append((f"Fin km {man['km_to']:g}", n - 6))
+    stops.append((f"Km {man['km_from'] + R[s_last - 6, 3]:.0f} {man['road']}", s_last - 6))
     stops.sort(key=lambda s: s[1])
     with open(f"{base}/{name}/rsmg_stops.txt", "w") as f:
         f.write("# Arrets de bus de la carte : nom, x, z, cap, cote (D/G), options\n")
@@ -378,9 +375,10 @@ def main():
     # apercu : vue du dessus de la route et des arrets
     pv = Image.new("RGB", (256, 256), (15, 23, 41))
     dr = ImageDraw.Draw(pv)
-    mn, mx = R[:, :2].min(0), R[:, :2].max(0)
+    Rp = R[s_first:s_last + 1]
+    mn, mx = Rp[:, :2].min(0), Rp[:, :2].max(0)
     sc = 240 / max(mx[0] - mn[0], mx[1] - mn[1], 1)
-    pts = [(8 + (p[0] - mn[0]) * sc, 248 - (p[1] - mn[1]) * sc) for p in R[::4, :2]]
+    pts = [(8 + (p[0] - mn[0]) * sc, 248 - (p[1] - mn[1]) * sc) for p in Rp[::4, :2]]
     dr.line(pts, fill=(236, 190, 110), width=3)
     for _, i in stops:
         q = (8 + (R[i, 0] - mn[0]) * sc, 248 - (R[i, 1] - mn[1]) * sc)
@@ -388,9 +386,38 @@ def main():
     pv.save(f"{base}/{name}/preview.png")
     open(f"{base}/{name}.map.txt", "w").write(f"[map]\nbaseDir={name}\nmodelsDir={name}\ntextures=textures\npreview=preview.png\n")
 
-    # archives : a extraire dans /sdcard/ (elles contiennent deja RSMG/maps/...)
+
+
+def main():
+    man = json.load(open(f"{W}/manifest.json"))
+    osm = json.load(open(f"{W}/osm.json"))
+    R = np.loadtxt(f"{W}/route.csv", delimiter=",", skiprows=1)      # x, y, z, km
+    km_total = len(R) * 5 / 1000.0
+    use_cards = CARDS_MODE == "1" or (CARDS_MODE == "auto" and km_total <= CARDS_MAX_KM)
+    print(f"vegetation : cartes photo dans les .3ds ({km_total:.0f} km)" if use_cards else
+          f"vegetation : trees.txt, streamee par le jeu autour du bus ({km_total:.0f} km)", flush=True)
+    tiles = man["tiles"]
+    forced = os.environ.get("RSMG_PART_TILES")
+    P = max(int(forced), 1) if forced else 15            # 15 troncons = 30 km par carte (la memoire du telephone est limitee)
+    if len(tiles) <= (P if forced else int(P * 1.34)):
+        parts = [tiles]
+    else:
+        parts = [tiles[i:i + P] for i in range(0, len(tiles), P)]
+        if len(parts) > 1 and len(parts[-1]) < max(P // 3, 1):         # un dernier morceau trop court est rattache au precedent
+            parts[-2] = parts[-2] + parts.pop()
+    base_name = re.sub(r"[^a-z0-9_-]+", "_", f"{man['road']}".lower()).strip("_")
+    names = []
+    for k, ts in enumerate(parts):
+        a = man["km_from"] + R[ts[0]["station_from"], 3]
+        b = man["km_from"] + R[ts[-1]["station_to"], 3]
+        nm = f"{base_name}_km{a:.0f}-{b:.0f}" if len(parts) == 1 else f"{base_name}_partie{k + 1}_km{a:.0f}-{b:.0f}"
+        names.append(nm)
+        export_part(man, osm, R, ts, nm, use_cards)
+        print(f"carte {k + 1}/{len(parts)} : {nm} ({len(ts)} troncons)", flush=True)
+
+    # une seule archive, a extraire dans /sdcard/ (elle contient deja RSMG/maps/...)
     os.makedirs(DIST, exist_ok=True)
-    zp = f"{DIST}/{name}_RSMG.zip"
+    zp = f"{DIST}/{base_name}_km{man['km_from']:.0f}-{man['km_to']:.0f}_RSMG.zip"
     with zipfile.ZipFile(zp, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for rt, _, files in os.walk(ROOT):
             for fn in files:

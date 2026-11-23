@@ -21,6 +21,9 @@ on:
       grass:
         description: "Densite d'herbe (1 = dense, 0.5 = moitie, 2 = tres dense)"
         default: "1.0"
+      part_km:
+        description: "Longueur de chaque carte du zip, en km (la memoire du telephone est limitee : 30 est sur, 50 maximum)"
+        default: "30"
       vegetation:
         description: "auto = cartes photo si <= 25 km, sinon trees.txt (le jeu la charge autour du bus) ; cards ; trees"
         type: choice
@@ -77,7 +80,9 @@ jobs:
       - name: Export RSMG (native game format, single zip)
         env:
           RSMG_CARDS: ${{ inputs.vegetation == 'cards' && '1' || (inputs.vegetation == 'trees' && '0' || 'auto') }}
-        run: python scripts/export_rsmg.py 2>&1 | tee -a run.log
+        run: |
+          export RSMG_PART_TILES=$(( ${{ inputs.part_km }} / 2 ))
+          python scripts/export_rsmg.py 2>&1 | tee -a run.log
 
       - name: Cache Blender
         if: inputs.blender

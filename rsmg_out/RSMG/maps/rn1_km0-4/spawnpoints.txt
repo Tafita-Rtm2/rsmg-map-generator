@@ -1,2 +1,0 @@
-# Point de depart de la carte rn1_km0-4
-Depart 46.88 1283.96 -21.45 116.5
