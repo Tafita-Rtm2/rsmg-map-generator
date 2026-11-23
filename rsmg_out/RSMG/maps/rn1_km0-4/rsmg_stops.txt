@@ -1,0 +1,4 @@
+# Arrets de bus de la carte : nom, x, z, cap, cote (D/G), options
+Debut RN1, 46.88, -21.45, 116.5, D, depart
+Ambohimanambola, 1795.32, -38.81, 63.6, D, depart
+Fin km 4, 3966.83, -94.65, 115.2, D, depart

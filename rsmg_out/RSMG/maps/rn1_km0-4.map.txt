@@ -1,0 +1,5 @@
+[map]
+baseDir=rn1_km0-4
+modelsDir=rn1_km0-4
+textures=textures
+preview=preview.png

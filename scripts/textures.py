@@ -39,8 +39,6 @@ _CAT = None
 
 
 def ph_pick(keywords, avoid=()):
-    if NO_NET:
-        return []
     """Cherche dans le catalogue Poly Haven les textures dont l'id/les tags contiennent les mots-cles."""
     global _CAT
     if _CAT is None:
@@ -62,12 +60,7 @@ def ph_pick(keywords, avoid=()):
     return [pid for _, pid in scored[:5]]
 
 
-NO_NET = False   # True quand les photos locales (assets/polyhaven) sont presentes : plus d'appel reseau
-
-
 def ph_fetch(ids):
-    if NO_NET:
-        return None, None
     for pid in ids:
         try:
             r = requests.get(f"https://api.polyhaven.com/files/{pid}", headers=UA, timeout=30)
@@ -324,107 +317,7 @@ def user_assets():
         print("falaise :", e)
 
 
-# ----------------------------------------------------------------------------- photos reelles fournies (assets/polyhaven, assets/veg)
-PHDIR = os.path.join(ASSETS, "polyhaven")
-VEGDIR = os.path.join(ASSETS, "veg")
-
-
-def ph_local(name):
-    """Photo locale -> carre RGB (moitie gauche des vignettes 2:1)."""
-    im = Image.open(f"{PHDIR}/{name}.webp").convert("RGB")
-    s = min(im.size)
-    return im.crop((0, 0, s, s))
-
-
-def make_tileable(im, size):
-    """Rend l'image sans raccord : fondu avec sa copie decalee d'une demi-image (masque nul sur les bords)."""
-    a = np.array(im.resize((size, size), Image.LANCZOS), float)
-    r = np.roll(np.roll(a, size // 2, 0), size // 2, 1)
-    t = np.linspace(0, 1, size)
-    w1 = np.sin(np.pi * t) ** 2
-    m = (w1[:, None] * w1[None, :])[..., None]
-    out = a * m + r * (1 - m)
-    # le fondu aplatit le contraste au centre : on le restitue
-    mean, std = a.mean((0, 1)), a.std((0, 1))
-    o_std = out.std((0, 1))
-    out = (out - out.mean((0, 1))) * (std / np.maximum(o_std, 1e-6)) + mean
-    return np.clip(out, 0, 255)
-
-
-def grade(arr, hue=None, mix=1.0, sat=1.0, val=1.0, gamma=1.0):
-    """Etalonnage : pousse la teinte vers `hue` (degres), puis sature / eclaire."""
-    im = Image.fromarray(arr.astype(np.uint8)).convert("HSV")
-    h, s, v = [np.array(c, float) for c in im.split()]
-    if hue is not None:
-        tgt = hue / 360 * 255
-        h = h + mix * (tgt - h)
-    s = np.clip(s * sat, 0, 255)
-    v = np.clip(255 * (v / 255) ** gamma * val, 0, 255)
-    out = Image.merge("HSV", [Image.fromarray(np.clip(c, 0, 255).astype(np.uint8)) for c in (h, s, v)]).convert("RGB")
-    return np.array(out, float)
-
-
-def pro_ground(name, src, size=None, mix_with=None, w=0.0, **kw):
-    size = size or SIZE
-    a = make_tileable(ph_local(src), size)
-    if mix_with:
-        b = make_tileable(ph_local(mix_with), size)
-        a = a * (1 - w) + b * w
-    a = grade(a, **kw) if kw else a
-    save_rgb(name, a, 88)
-    print(f"[texture] {name} <- photo {src}", flush=True)
-    return a
-
-
-def pro_textures():
-    """Remplace les sols par les vraies photos : tout est couvert d'herbe verte (herbe, foret, rizieres), roches et falaises reelles."""
-    if not os.path.isdir(PHDIR):
-        print("[texture] assets/polyhaven absent : textures precedentes conservees", flush=True)
-        return
-    # herbe verte (sol entierement couvert) : deux variantes pour casser la repetition
-    pro_ground("grass", "rocky_terrain_02", hue=96, mix=0.55, sat=1.25, val=1.05)
-    pro_ground("grass2", "grass_ground_2", hue=84, mix=0.9, sat=1.9, val=1.12)
-    pro_ground("paddy", "rocky_terrain_02", hue=100, mix=0.7, sat=1.3, val=1.08)
-    pro_ground("forest", "rocky_terrain_02", mix_with="leaf_scattered_gravel_1", w=0.22, hue=100, mix=0.7, sat=1.35, val=0.8)
-    # terre rouge (laterite), talus, roches
-    pro_ground("laterite", "rocky_trail_02", hue=14, mix=0.75, sat=1.9, val=0.98)
-    pro_ground("falaise", "rocky_terrain", hue=16, mix=0.5, sat=1.3, val=0.95)
-    pro_ground("rock", "rocks_ground_03", sat=1.0, val=1.0)
-    pro_ground("mud", "pebbles", hue=24, mix=0.6, sat=1.5, val=1.2)
-    pro_ground("shoulder", "rocky_trail", sat=0.9, val=1.0)
-    # chaussees et ouvrages
-    pro_ground("road_minor", "gravel_floor_03_1", sat=0.7, val=1.15)
-    pro_ground("trottoir", "rock_ground_02", sat=0.6, val=1.25)
-    pro_ground("beton", "rock_ground_02", sat=0.4, val=1.3)
-    pro_ground("pole", "rock_ground_02", sat=0.4, val=1.2)
-    t = pro_ground("track", "rocky_trail_02", hue=18, mix=0.6, sat=1.5, val=1.0)
-    x = np.arange(t.shape[1])[None, :] / t.shape[1]
-    rut = np.exp(-((x - 0.3) / 0.07) ** 2) + np.exp(-((x - 0.7) / 0.07) ** 2)
-    save_rgb("track", t * (1 - 0.22 * rut[..., None]), 88)
-    # asphalte : 7 m x 28 m ; photo de gravier fin sombre repetee 4 fois, usure + traces de roues
-    W, H = 512, 2048
-    a = make_tileable(ph_local("gravel_stones"), 256)       # grain fin : 256 px repetes 2 x 8 fois
-    a = grade(a, sat=0.3, val=1.1)
-    base = np.tile(a, (8, 2, 1))
-    xs = np.arange(W)[None, :] / W
-    ys = np.arange(H)[:, None]
-    wheel = np.exp(-((xs - 0.3) / 0.09) ** 2) + np.exp(-((xs - 0.7) / 0.09) ** 2)
-    wear = 1.0 - 0.10 * wheel + 0.08 * (tnoise(2048, 160)[:, :W] - 0.5)
-    save_rgb("road_main", base * wear[..., None], 90)
-    print("[texture] road_main <- photo gravel_stones", flush=True)
-    # sprites de vegetation (arbres, buissons, herbes avec transparence)
-    if os.path.isdir(VEGDIR):
-        import json, shutil
-        meta = json.load(open(f"{VEGDIR}/meta.json"))
-        for k in meta:
-            shutil.copy(f"{VEGDIR}/{k}.png", f"{OUT}/veg_{k}.png")
-        json.dump(meta, open(f"{OUT}/veg_meta.json", "w"))
-        print(f"[texture] {len(meta)} sprites de vegetation", flush=True)
-
-
 def main():
-    global NO_NET
-    NO_NET = os.path.isdir(PHDIR)
     ground("grass", (86, 98, 52), (128, 120, 70))
     ground("laterite", (150, 82, 52), (118, 64, 44), pebbles=(186, 150, 120))
     ground("rock", (118, 108, 98), (160, 150, 135), speck=0.3)
@@ -465,7 +358,6 @@ def main():
     for k in ("euc", "round", "pine", "ravi", "bush"):
         far(f"{k}", k)
     user_assets()
-    pro_textures()
     print("textures pretes :", len(os.listdir(OUT)), "fichiers", flush=True)
 
 

@@ -22,18 +22,14 @@ MAX_TRIS_FILE = 120000   # par fichier .3ds
 MAX_TREES = 10**9        # arbres (T/P) sur toute la carte
 MAX_UNDER = 10**9       # buissons + herbe sur toute la carte (herbe dense au bord des routes)
 
-KEY = {"grass": "herbe", "grass2": "herbe2", "laterite": "laterite", "rock": "roche", "forest": "sol_foret", "paddy": "riziere",
+KEY = {"grass": "herbe", "laterite": "laterite", "rock": "roche", "forest": "sol_foret", "paddy": "riziere",
        "mud": "boue", "water": "eau", "shoulder": "bord", "road_main": "route", "road_minor": "route_sec",
        "track": "piste", "wall_white": "mur_blanc", "wall_ochre": "mur_ocre", "wall_pink": "mur_rose",
        "wall_brick": "mur_brique", "wall_green": "mur_vert", "roof_tile": "toit_tuile", "roof_tin": "toit_tole"}
 TEXSIZE = {"road_main": (512, 2048), "wall_white": (256, 256), "wall_ochre": (256, 256), "wall_pink": (256, 256),
            "wall_brick": (256, 256), "wall_green": (256, 256), "roof_tile": (256, 256), "roof_tin": (256, 256),
            "road_minor": (256, 256), "track": (256, 256), "cable": (16, 16), "ligne": (16, 16), "water_surface": (256, 256), "pole": (256, 256), "beton": (256, 256), "bois": (256, 256), "trottoir": (256, 256)}
-GROUND = {"grass", "grass2", "laterite", "rock", "forest", "paddy", "mud", "shoulder", "falaise", "water"}
-CARDS_MODE = os.environ.get("RSMG_CARDS", "auto")          # auto = cartes photo seulement si la carte fait <= 25 km ; 1 = toujours ; 0 = jamais
-CARDS_MAX_KM = 25     # arbres / buissons / herbes = plans croises photo (RSMG_CARDS=0 : modeles du jeu)
-CAP_TILE = {"T": 1200, "B": 800, "G": 1800}         # cartes max par troncon de 2 km
-GROUP_OF = {0: ("pine",), 1: ("round",), 2: ("fir",), 3: ("round",), 4: ("bush", "bush", "weed"), 5: ("grass", "grass", "grass", "weed")}
+GROUND = {"grass", "laterite", "rock", "forest", "paddy", "mud", "shoulder", "falaise", "water"}
 PREFIX = {"GND": "_gencol_ground", "SOLID": "solid", "DECOR": "_fake_decor"}
 
 
@@ -55,8 +51,6 @@ def material_chunk(name, tex):
         + color_chunk(0xA030, (0, 0, 0))
     if tex:
         b += chunk(0xA200, chunk(0x0030, struct.pack("<H", 100)) + chunk(0xA300, cstr(tex)))
-        if name.startswith("veg_"):       # sprite avec transparence : carte d'opacite = le meme PNG (canal alpha)
-            b += chunk(0xA210, chunk(0x0030, struct.pack("<H", 100)) + chunk(0xA300, cstr(tex)))
     return chunk(0xAFFF, b)
 
 
@@ -84,69 +78,6 @@ def write3ds(mats, objects):
     return chunk(0x4D4D, chunk(0x0002, struct.pack("<I", 3)) + chunk(0x3D3D, edit))
 
 
-# ----------------------------------------------------------------------------- vegetation en cartes croisees (photos a fond transparent)
-def load_veg(enabled):
-    p = f"{W}/tex/veg_meta.json"
-    if not (enabled and os.path.exists(p)):
-        return None
-    meta = json.load(open(p))
-    groups = {}
-    for k, m in sorted(meta.items()):
-        groups.setdefault(m["group"], []).append(k)
-    return meta, groups
-
-
-def build_cards(arr, dx, dy, veg, rng):
-    """arr : lignes (sp, x, y, z, sc, rot) du troncon (y = nord). Retourne {materiau: (V, UV, F)} en repere 3DS."""
-    meta, groups = veg
-    out = {}
-    if not len(arr):
-        return out
-    kind = np.where(arr[:, 0] <= 3, "T", np.where(arr[:, 0] == 4, "B", "G"))
-    sel = []
-    for kd, cap in CAP_TILE.items():
-        ii = np.where(kind == kd)[0]
-        if len(ii) > cap:
-            ii = rng.choice(ii, cap, replace=False)
-        sel.append(ii)
-    arr = arr[np.concatenate(sel)]
-    r1, r2, r3 = rng.random(len(arr)), rng.random(len(arr)), rng.random(len(arr))
-    var = {}
-    for i, row in enumerate(arr):
-        grp = GROUP_OF[int(row[0])]
-        g = grp[int(r1[i] * len(grp)) % len(grp)]
-        names = groups.get(g)
-        if not names:
-            continue
-        var.setdefault(names[int(r2[i] * len(names)) % len(names)], []).append(i)
-    for nm, idx in var.items():
-        idx = np.array(idx)
-        m = meta[nm]
-        a = arr[idx]
-        h0, h1 = m["h"]
-        h = (h0 + (h1 - h0) * r3[idx]) * np.clip(a[:, 4], 0.6, 1.4)
-        hw = h * m["aspect"] / 2
-        X, Y, Z = a[:, 1] + dx, a[:, 2] + dy, a[:, 3] - 0.12
-        Vs, Fs = [], []
-        for pl, off in enumerate((0.0, math.pi / 2)):
-            ang = a[:, 5] + off
-            ux, uy = np.cos(ang) * hw, np.sin(ang) * hw
-            n_ = len(idx)
-            V = np.zeros((n_, 4, 3))
-            V[:, 0] = np.column_stack([X - ux, Y - uy, Z])
-            V[:, 1] = np.column_stack([X + ux, Y + uy, Z])
-            V[:, 2] = np.column_stack([X + ux, Y + uy, Z + h])
-            V[:, 3] = np.column_stack([X - ux, Y - uy, Z + h])
-            Vs.append(V)
-        V = np.concatenate(Vs, 1).reshape(-1, 3)                  # (n*8, 3)
-        UV = np.tile(np.array([[0, 0], [1, 0], [1, 1], [0, 1]], float), (len(idx) * 2, 1))
-        base = np.arange(len(idx) * 2)[:, None] * 4
-        quad = np.array([[0, 1, 2], [0, 2, 3], [0, 2, 1], [0, 3, 2]])      # recto + verso
-        F = (base[:, None, :1] + quad[None]).reshape(-1, 3)
-        out[f"veg_{nm}"] = (V, UV, F)
-    return out
-
-
 # ----------------------------------------------------------------------------- outils
 def pieces(V, UV, F):
     for s in range(0, len(F), MAX_FACES):
@@ -155,19 +86,17 @@ def pieces(V, UV, F):
         yield V[used], UV[used], inv.reshape(-1, 3)
 
 
-def export_part(man, osm, R, tiles, name, use_cards):
-    """Ecrit UNE carte RSMG (dossier RSMG/maps/<name>) pour les troncons `tiles`, origine recentree sur son debut."""
-    s_first, s_last = tiles[0]["station_from"], tiles[-1]["station_to"]
-    ox, oy = R[s_first, 0], R[s_first, 1]
+def main():
+    man = json.load(open(f"{W}/manifest.json"))
+    osm = json.load(open(f"{W}/osm.json"))
+    R = np.loadtxt(f"{W}/route.csv", delimiter=",", skiprows=1)      # x, y, z, km
+    ox, oy = R[0, 0], R[0, 1]
+    name = re.sub(r"[^a-z0-9_-]+", "_", f"{man['road']}_km{man['km_from']:g}-{man['km_to']:g}".lower()).strip("_")
     base = f"{ROOT}/RSMG/maps"
     tiles_dir = f"{base}/{name}/tiles/{name}"
     os.makedirs(f"{base}/{name}/textures", exist_ok=True)
     os.makedirs(tiles_dir, exist_ok=True)
     rng = np.random.default_rng(5)
-    km_total = (s_last - s_first) * 5 / 1000.0
-    VEG = load_veg(use_cards)
-    used_cards = set()
-    print(f"vegetation : cartes photo dans les .3ds ({km_total:.0f} km)" if VEG else f"vegetation : trees.txt, streamee par le jeu autour du bus ({km_total:.0f} km)", flush=True)
 
     n = len(R)
     T = np.gradient(R[:, :2], axis=0)
@@ -176,7 +105,7 @@ def export_part(man, osm, R, tiles, name, use_cards):
     used_mats = set()
     traffic_no = 0
     trees_all = []
-    for t in tiles:
+    for t in man["tiles"]:
         ti = t["index"]
         tx, ty = t["origin_xy"]
         data = json.load(open(f"{W}/tiles/tile_{ti:02d}.json"))
@@ -200,19 +129,7 @@ def export_part(man, osm, R, tiles, name, use_cards):
             out_objs.append((nm, V, UV, F, fm, mats))
             cur_parts, cur_v = [], 0
 
-        p_tr = f"{W}/tiles/tile_{ti:02d}_trees.csv"
-        arr_tr = np.loadtxt(p_tr, delimiter=",", skiprows=1, ndmin=2) if os.path.exists(p_tr) else np.zeros((0, 6))
-        if arr_tr.size == 0:
-            arr_tr = np.zeros((0, 6))
         for kind in ("GND", "SOLID", "DECOR"):
-            if kind == "DECOR" and VEG is not None:
-                for key, (cv, cuv, cf) in build_cards(arr_tr, tx - ox, ty - oy, VEG, rng).items():
-                    used_cards.add(key)
-                    for pv, puv, pf in pieces(cv, cuv, cf):
-                        if cur_v + len(pv) > MAX_VERTS:
-                            flush_obj(kind)
-                        cur_parts.append((key, pv, puv, pf))
-                        cur_v += len(pv)
             for mat, d in data.items():
                 if d["kind"] != kind:
                     continue
@@ -273,8 +190,10 @@ def export_part(man, osm, R, tiles, name, use_cards):
 
         # vegetation du troncon (x y z classe taille pick) ; repere jeu : x, y haut, z = -nord
         rows = []
-        if VEG is None and arr_tr.size:
-            for sp, x, y, z, sc, rot in arr_tr:
+        p = f"{W}/tiles/tile_{ti:02d}_trees.csv"
+        if os.path.exists(p):
+            arr = np.loadtxt(p, delimiter=",", skiprows=1, ndmin=2)
+            for sp, x, y, z, sc, rot in arr:
                 rows.append((int(sp), x + tx - ox, z, -(y + ty - oy), sc))
         trees_all.append((ti, rows))
         print(f"troncon {ti}: {fileno} fichier(s) 3DS, {len(rows)} vegetaux", flush=True)
@@ -325,11 +244,11 @@ def export_part(man, osm, R, tiles, name, use_cards):
         i0 = max(j - 1, 0)
         dx, dz = R[j, 0] - R[i0, 0], -(R[j, 1] - R[i0, 1])
         return math.degrees(math.atan2(dx, dz))
-    i0 = min(s_first + 10, n - 1)
+    i0 = min(10, n - 1)
     x, z, y = game_pos(i0)
     open(f"{base}/{name}/spawnpoints.txt", "w").write(
         f"# Point de depart de la carte {name}\nDepart {x:.2f} {y + 0.5:.2f} {z:.2f} {heading(i0):.1f}\n")
-    stops = [(f"Km {man['km_from'] + R[i0, 3]:.0f} {man['road']}", i0)]
+    stops = [(f"Debut {man['road']}", i0)]
     tree = None
     try:
         from scipy.spatial import cKDTree
@@ -343,10 +262,10 @@ def export_part(man, osm, R, tiles, name, use_cards):
             if not nm or nd["tags"].get("place") not in ("city", "town", "village", "hamlet", "suburb", "neighbourhood"):
                 continue
             d, i = tree.query(nd["pt"])
-            if d < 350 and nm not in seen and s_first + 5 < i < s_last - 5:
+            if d < 350 and nm not in seen and 5 < i < n - 5:
                 seen.add(nm)
                 stops.append((nm, int(i)))
-    stops.append((f"Km {man['km_from'] + R[s_last - 6, 3]:.0f} {man['road']}", s_last - 6))
+    stops.append((f"Fin km {man['km_to']:g}", n - 6))
     stops.sort(key=lambda s: s[1])
     with open(f"{base}/{name}/rsmg_stops.txt", "w") as f:
         f.write("# Arrets de bus de la carte : nom, x, z, cap, cote (D/G), options\n")
@@ -367,18 +286,12 @@ def export_part(man, osm, R, tiles, name, use_cards):
             im = im.resize(TEXSIZE.get(mat, (1024, 1024) if mat in GROUND else (512, 512)), Image.LANCZOS)
         im.save(f"{base}/{name}/textures/{key}.png", optimize=True)
 
-    for key in sorted(used_cards):
-        src = f"{W}/tex/{key}.png"
-        if os.path.exists(src):
-            Image.open(src).convert("RGBA").save(f"{base}/{name}/textures/{key}.png", optimize=True)
-
     # apercu : vue du dessus de la route et des arrets
     pv = Image.new("RGB", (256, 256), (15, 23, 41))
     dr = ImageDraw.Draw(pv)
-    Rp = R[s_first:s_last + 1]
-    mn, mx = Rp[:, :2].min(0), Rp[:, :2].max(0)
+    mn, mx = R[:, :2].min(0), R[:, :2].max(0)
     sc = 240 / max(mx[0] - mn[0], mx[1] - mn[1], 1)
-    pts = [(8 + (p[0] - mn[0]) * sc, 248 - (p[1] - mn[1]) * sc) for p in Rp[::4, :2]]
+    pts = [(8 + (p[0] - mn[0]) * sc, 248 - (p[1] - mn[1]) * sc) for p in R[::4, :2]]
     dr.line(pts, fill=(236, 190, 110), width=3)
     for _, i in stops:
         q = (8 + (R[i, 0] - mn[0]) * sc, 248 - (R[i, 1] - mn[1]) * sc)
@@ -386,38 +299,9 @@ def export_part(man, osm, R, tiles, name, use_cards):
     pv.save(f"{base}/{name}/preview.png")
     open(f"{base}/{name}.map.txt", "w").write(f"[map]\nbaseDir={name}\nmodelsDir={name}\ntextures=textures\npreview=preview.png\n")
 
-
-
-def main():
-    man = json.load(open(f"{W}/manifest.json"))
-    osm = json.load(open(f"{W}/osm.json"))
-    R = np.loadtxt(f"{W}/route.csv", delimiter=",", skiprows=1)      # x, y, z, km
-    km_total = len(R) * 5 / 1000.0
-    use_cards = CARDS_MODE == "1" or (CARDS_MODE == "auto" and km_total <= CARDS_MAX_KM)
-    print(f"vegetation : cartes photo dans les .3ds ({km_total:.0f} km)" if use_cards else
-          f"vegetation : trees.txt, streamee par le jeu autour du bus ({km_total:.0f} km)", flush=True)
-    tiles = man["tiles"]
-    forced = os.environ.get("RSMG_PART_TILES")
-    P = max(int(forced), 1) if forced else 15            # 15 troncons = 30 km par carte (la memoire du telephone est limitee)
-    if len(tiles) <= (P if forced else int(P * 1.34)):
-        parts = [tiles]
-    else:
-        parts = [tiles[i:i + P] for i in range(0, len(tiles), P)]
-        if len(parts) > 1 and len(parts[-1]) < max(P // 3, 1):         # un dernier morceau trop court est rattache au precedent
-            parts[-2] = parts[-2] + parts.pop()
-    base_name = re.sub(r"[^a-z0-9_-]+", "_", f"{man['road']}".lower()).strip("_")
-    names = []
-    for k, ts in enumerate(parts):
-        a = man["km_from"] + R[ts[0]["station_from"], 3]
-        b = man["km_from"] + R[ts[-1]["station_to"], 3]
-        nm = f"{base_name}_km{a:.0f}-{b:.0f}" if len(parts) == 1 else f"{base_name}_partie{k + 1}_km{a:.0f}-{b:.0f}"
-        names.append(nm)
-        export_part(man, osm, R, ts, nm, use_cards)
-        print(f"carte {k + 1}/{len(parts)} : {nm} ({len(ts)} troncons)", flush=True)
-
-    # une seule archive, a extraire dans /sdcard/ (elle contient deja RSMG/maps/...)
+    # archives : a extraire dans /sdcard/ (elles contiennent deja RSMG/maps/...)
     os.makedirs(DIST, exist_ok=True)
-    zp = f"{DIST}/{base_name}_km{man['km_from']:.0f}-{man['km_to']:.0f}_RSMG.zip"
+    zp = f"{DIST}/{name}_RSMG.zip"
     with zipfile.ZipFile(zp, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
         for rt, _, files in os.walk(ROOT):
             for fn in files:

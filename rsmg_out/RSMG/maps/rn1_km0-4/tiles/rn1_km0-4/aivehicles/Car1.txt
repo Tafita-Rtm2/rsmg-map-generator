@@ -1,0 +1,15 @@
+[automatic_setup]
+enabled=1
+reverse=0
+loop=0
+
+[from_3d]
+readFrom3D=1
+prefix=Car1
+maxPathsToCheck=999
+
+[defaults]
+isSpawner=1
+isBusSpawner=0
+spawnInterval=9
+speedMultiplier=1
