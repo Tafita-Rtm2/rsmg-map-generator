@@ -21,13 +21,14 @@ ROAD_HALF = 3.5     # demi-largeur de chaussee
 SHOULDER = 5.5      # fin de l'accotement
 W_MAX = 300.0       # demi-largeur du relief genere
 OFFS_POS = [3.5, 5.5, 8, 11, 15, 20, 27, 36, 48, 62, 80, 102, 130, 165, 210, 260, 300]
-TEXM = {"grass": 6, "laterite": 5, "rock": 8, "forest": 6, "paddy": 5, "mud": 5, "water": 10, "shoulder": 3, "falaise": 8}
+TEXM = {"grass": 4.5, "grass2": 4.5, "laterite": 4, "rock": 5, "forest": 4.5, "paddy": 4.5, "mud": 3.5, "water": 10, "shoulder": 2.5, "falaise": 5}
 KIND = {"road_main": "GND", "road_minor": "GND", "track": "GND"}
 for _m in TEXM:
     KIND[_m] = "GND"
 KIND.update({"trottoir": "GND", "beton": "SOLID", "pole": "SOLID", "borne": "SOLID", "fuel": "SOLID", "brique": "SOLID"})
-SH, GR, LA, RO, FO, PA, MU, WA, CL = range(9)
-CLS = {SH: "shoulder", GR: "grass", LA: "laterite", RO: "rock", FO: "forest", PA: "paddy", MU: "mud", WA: "water", CL: "falaise"}
+SH, GR, LA, RO, FO, PA, MU, WA, CL, GR2 = range(10)
+CLS = {SH: "shoulder", GR: "grass", LA: "laterite", RO: "rock", FO: "forest", PA: "paddy", MU: "mud", WA: "water", CL: "falaise", GR2: "grass2"}
+STEEP = {"rock", "falaise"}     # UV projetes selon la normale (pas d'etirement sur les parois)
 
 
 class Acc:
@@ -292,6 +293,8 @@ def main():
 
     noise = np.sin(cx * 0.011 + 1.3) * np.sin(cy * 0.0093 + 0.4) + 0.5 * np.sin(cx * 0.031 + cy * 0.027)
     cls = np.where(noise > -0.9, GR, LA)
+    n2_ = np.sin(cx * 0.047 + 2.1) * np.sin(cy * 0.039 + 0.7) + 0.6 * np.sin(cx * 0.013 - cy * 0.021 + 1.0)
+    cls = np.where((cls == GR) & (n2_ > 0.15), GR2, cls)       # 2e herbe (plus claire) : casse la repetition
     cls = np.where(inside(U_resid, cx, cy), LA, cls)
     cls = np.where((slope > 24) & (slope <= 36), FO, cls)
     cls = np.where(inside(U_wood, cx, cy), FO, cls)
@@ -312,7 +315,19 @@ def main():
         F = np.concatenate([np.stack([a_, b_, c_], 1), np.stack([a_, c_, d_], 1)], 0)
         used, invx = np.unique(F.ravel(), return_inverse=True)
         Vm = Vall[used]
-        A(name).add(Vm, Vm[:, :2] / TEXM[name], invx.reshape(-1, 3))
+        if name in STEEP:
+            # sommets non partages + UV par face selon l'axe dominant de la normale : roche sans etirement
+            Fi = invx.reshape(-1, 3)
+            Vf = Vm[Fi]                                  # (nf, 3, 3)
+            nrm = np.cross(Vf[:, 1] - Vf[:, 0], Vf[:, 2] - Vf[:, 0])
+            use_y = np.abs(nrm[:, 0]) > np.abs(nrm[:, 1])
+            horiz = np.abs(nrm[:, 2]) > 0.7 * np.linalg.norm(nrm, axis=1)
+            u_ = np.where(horiz[:, None], Vf[..., 0], np.where(use_y[:, None], Vf[..., 1], Vf[..., 0]))
+            v_ = np.where(horiz[:, None], Vf[..., 1], Vf[..., 2])
+            A(name).add(Vf.reshape(-1, 3), np.stack([u_, v_], -1).reshape(-1, 2) / TEXM[name],
+                        np.arange(len(Fi) * 3).reshape(-1, 3))
+        else:
+            A(name).add(Vm, Vm[:, :2] / TEXM[name], invx.reshape(-1, 3))
 
     # ------------------------------------------------------------------ chaussee principale
     cols = np.array([-ROAD_HALF, 0.0, ROAD_HALF])
@@ -1021,10 +1036,10 @@ def main():
         z = terrain_h(x, y) if len(x) else np.zeros(0)
         trees.append(np.column_stack([sp, x, y, z, sc, rng.uniform(0, 6.283, len(x))]))
 
-    TREE_D = {FO: 1 / 40, GR: 1 / 1100, LA: 1 / 2500}
-    BUSH_D = {FO: 1 / 80, GR: 1 / 300, LA: 1 / 600, CL: 1 / 250, RO: 1 / 900}
+    TREE_D = {FO: 1 / 40, GR: 1 / 1100, GR2: 1 / 1100, LA: 1 / 2500}
+    BUSH_D = {FO: 1 / 80, GR: 1 / 300, GR2: 1 / 300, LA: 1 / 600, CL: 1 / 250, RO: 1 / 900}
     # touffes d'herbe par m2 : (jusqu'a 15 m de la route, jusqu'a 60 m, au-dela)
-    GRASS_D = {GR: (1.0, 0.30, 0.03), PA: (1.0, 0.40, 0.06), FO: (0.8, 0.5, 0.15), LA: (0.4, 0.10, 0.015),
+    GRASS_D = {GR: (1.0, 0.30, 0.03), GR2: (1.0, 0.30, 0.03), PA: (1.0, 0.40, 0.06), FO: (0.8, 0.5, 0.15), LA: (0.4, 0.10, 0.015),
                CL: (0.15, 0.10, 0.03), RO: (0.03, 0.03, 0.01), MU: (0.3, 0.1, 0.01)}
     veg_rows = []
     gcap = int(a.grass_cap * a.grass)
