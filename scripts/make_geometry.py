@@ -1077,7 +1077,7 @@ def main():
             if kindv == "g":
                 for code, (d1_, d2_, d3_) in GRASS_D.items():
                     dq = np.where(cls_t == code, np.where(off_t <= 15, d1_, np.where(off_t <= 60, d2_, d3_)), dq)
-                dq = dq * patch_
+                dq = dq * np.where(off_t <= 6.0, 0.9 + 0.2 * pn_, patch_)      # pres de la route : herbe reguliere, sans trous
             else:
                 for code, dv in (TREE_D if kindv == "t" else BUSH_D).items():
                     dq = np.where(cls_t == code, dv, dq)
@@ -1126,7 +1126,7 @@ def main():
             elif kindv == "b" and len(got) > 2 * a.tree_cap:
                 got = got[rng.choice(len(got), 2 * a.tree_cap, replace=False)]
             veg_rows.append(got)
-    # alignements d'arbres le long de la route
+    # FRANGE D'HERBE CONTINUE au bord de la chaussee (comme sur ETS2) : deux bandes de touffes serrees, de 0,6 a 1,5 m puis de 1,5 a 3 m du bord\n    # de l'asphalte, des DEUX cotes et sur TOUTE la route, sans trous (positions tirees le long de chaque pas de route, pas dans le bruit de plaques).\n    # Ce sont les touffes les plus proches de la route : le jeu les garde en premier (tri par distance dans trees.txt).\n    Tg_ = np.zeros_like(P)\n    Tg_[:-1] = P[1:] - P[:-1]\n    Tg_[-1] = Tg_[-2]\n    Tg_ = Tg_ / np.maximum(np.linalg.norm(Tg_, axis=1, keepdims=True), 1e-6)\n    for side in (-1, 1):\n        for (o0_, o1_, sp_step) in ((0.6, 1.5, 0.55), (1.5, 3.0, 1.0)):\n            reps_ = max(1, int(round(STEP / sp_step)))\n            ii_ = np.repeat(np.arange(n - 1), reps_)\n            if not len(ii_):\n                continue\n            u_ = rng.random(len(ii_)) * STEP\n            off_ = ROAD_HALF + rng.uniform(o0_, o1_, len(ii_))\n            xy = P[ii_] + Tg_[ii_] * u_[:, None] + N[ii_] * (side * off_)[:, None]\n            push(xy[:, 0], xy[:, 1], np.full(len(ii_), 5), rng.uniform(0.7, 1.35, len(ii_)), minoff=ROAD_HALF + 0.5)\n    # alignements d'arbres le long de la route
     for side in (-1, 1):
         ii_ = np.arange(int(rng.integers(0, 5)), n, 3)
         ok = np.sin(S[ii_] * 0.004 + side * 2.0) > -0.35
