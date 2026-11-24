@@ -1065,14 +1065,30 @@ def main():
         sl_ = slice(r0_, r1_)
         cls_t, off_t, area_t, keep_t = cls[sl_], offc[sl_], qarea[sl_], keep[sl_]
         Q_ = [arr[sl_].reshape(-1, 3) for arr in (V0, V1, V2, V3)]
+        # centres des cases (sert aux taches de foret et au bruit de touffes)
+        cxc_ = (Q_[0][:, 0] + Q_[1][:, 0] + Q_[2][:, 0] + Q_[3][:, 0]).reshape(cls_t.shape) / 4.0
+        cyc_ = (Q_[0][:, 1] + Q_[1][:, 1] + Q_[2][:, 1] + Q_[3][:, 1]).reshape(cls_t.shape) / 4.0
+        # bruit de touffes (echelle ~5 a 12 m) : l'herbe et les buissons poussent par PLAQUES avec des vides entre elles, comme sur une
+        # vraie route de campagne (ETS2) ; sans ca, un tapis regulier de touffes identiques a l'air artificiel
+        pn_ = 0.5 + 0.5 * (np.sin(cxc_ / 9.0 + 1.7) * np.sin(cyc_ / 11.0 + 0.4) + 0.6 * np.sin(cxc_ / 4.3 - cyc_ / 5.1 + 0.9)) / 1.6
+        patch_ = 0.50 + 1.00 * np.clip(pn_, 0.0, 1.0)
         for kindv in ("t", "b", "g"):
             dq = np.zeros(cls_t.shape)
             if kindv == "g":
                 for code, (d1_, d2_, d3_) in GRASS_D.items():
                     dq = np.where(cls_t == code, np.where(off_t <= 15, d1_, np.where(off_t <= 60, d2_, d3_)), dq)
+                dq = dq * patch_
             else:
                 for code, dv in (TREE_D if kindv == "t" else BUSH_D).items():
                     dq = np.where(cls_t == code, dv, dq)
+                if kindv == "b":
+                    # buissons de bord de route : en groupes serres dans les 12 premiers metres (haies, ronces, touffes hautes), plus rares ensuite
+                    near_ = {GR: 1 / 16.0, LA: 1 / 28.0, SH: 1 / 40.0, CL: 1 / 110.0, MU: 1 / 90.0, PA: 1 / 400.0}
+                    nb_ = np.zeros(cls_t.shape)
+                    for code, dv in near_.items():
+                        nb_ = np.where(cls_t == code, dv, nb_)
+                    nb_ = np.where(off_t <= 12, nb_ * np.clip(patch_ * patch_ * 1.3, 0.1, 2.6), np.where(off_t <= 35, nb_ * 0.12, 0.0))
+                    dq = np.maximum(dq, nb_)
             if kindv == "t":
                 # taches de foret : le bruit lisse (grandes ondes) donne des zones de foret DENSE (arbres serres, des 3 m du bord de
                 # la route), des zones de foret CLAIRE (arbres espaces) et des clairieres ; les forets OSM (FO) restent denses
@@ -1113,9 +1129,9 @@ def main():
     # alignements d'arbres le long de la route
     for side in (-1, 1):
         ii_ = np.arange(int(rng.integers(0, 5)), n, 3)
-        ok = np.sin(S[ii_] * 0.004 + side * 2.0) > 0.0
-        ii_ = ii_[ok & (rng.random(len(ii_)) < 0.5)]
-        off = rng.uniform(7.5, 10.5, len(ii_))
+        ok = np.sin(S[ii_] * 0.004 + side * 2.0) > -0.35
+        ii_ = ii_[ok & (rng.random(len(ii_)) < 0.62)]
+        off = rng.uniform(5.5, 12.0, len(ii_))          # alignement irregulier : pas une file au cordeau
         xy = P[ii_] + N[ii_] * (side * off)[:, None]
         sp = rng.choice([0, 1, 3], size=len(ii_), p=[0.55, 0.35, 0.10])
         push(xy[:, 0], xy[:, 1], sp, rng.uniform(0.9, 1.5, len(ii_)))
