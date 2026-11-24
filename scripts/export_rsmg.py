@@ -127,8 +127,6 @@ def main():
                 F_ = np.array(d["f"], int).reshape(-1, 3)
                 cen = V_[F_].mean(axis=1)[:, :2] + np.array([tx - ox, ty - oy])
                 far_ = _rtree.query(cen)[0] > COLLISION_M
-                if mat == "water":
-                    continue                                          # l'eau garde sa collision
                 if far_.any():
                     nfar += int(far_.sum())
                     d2 = dict(d); d2["kind"] = "DECOR"; d2["alias"] = mat
