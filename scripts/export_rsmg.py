@@ -230,7 +230,7 @@ def main():
     # plafonds de vegetation sur toute la carte, puis ecriture par troncon
     flat = [(ti, r) for ti, rows in trees_all for r in rows]
     big = [i for i, (_, r) in enumerate(flat) if r[0] in (0, 1, 2, 3)]
-    small = [i for i, (_, r) in enumerate(flat) if r[0] in (4, 5)]
+    small = [i for i, (_, r) in enumerate(flat) if r[0] in (4, 5, 6)]
     keep = set(rng.permutation(big)[:MAX_TREES].tolist()) | set(rng.permutation(small)[:MAX_UNDER].tolist())
     per = {ti: [] for ti, _ in trees_all}
     for i, (ti, r) in enumerate(flat):
@@ -248,8 +248,10 @@ def main():
             cls, pick = "T", rng.uniform(0.8, 1.0)
         elif sp == 4:
             cls, pick = "B", rng.uniform(0, 1)
+        elif sp == 6:
+            cls, pick = "G", 1.0                 # riz : le jeu choisit une touffe « riz_* » (pick = 1.0)
         else:
-            cls, pick = "G", rng.uniform(0, 1)
+            cls, pick = "G", rng.uniform(0, 0.99)
         per[ti].append(f"{x:.2f} {y:.2f} {z:.2f} {cls} {size:.2f} {pick:.2f}")
     # ORDRE DES POINTS : le jeu ne lit que le DEBUT de chaque trees.txt (quota par troncon). Avant, les points etaient dans l'ordre de
     # creation : les ~270 premiers arbres tombaient dans les 350 premiers metres du troncon, le reste de la route restait vide.

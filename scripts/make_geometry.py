@@ -1024,7 +1024,7 @@ def main():
     print(f"surfaces d'eau : {n_riv}", flush=True)
 
     # ------------------------------------------------------------------ vegetation
-    # especes : 0 eucalyptus, 1 arbre rond (manguier...), 2 pin, 3 ravinala, 4 buisson
+    # especes : 0 eucalyptus, 1 arbre rond (manguier...), 2 pin, 3 ravinala, 4 buisson, 5 herbe, 6 riz (rizieres)
     def species_for(z, size):
         r = rng.random(size)
         zz = np.asarray(z)
@@ -1113,7 +1113,7 @@ def main():
             if kindv == "b":
                 push(pxy[:, 0], pxy[:, 1], np.full(len(rep_), 4), rng.uniform(0.7, 1.5, len(rep_)))
             elif kindv == "g":
-                push(pxy[:, 0], pxy[:, 1], np.full(len(rep_), 5), rng.uniform(0.6, 1.3, len(rep_)), minoff=ROAD_HALF + 0.6)   # herbe a ~0,5 m du bord de la chaussee
+                push(pxy[:, 0], pxy[:, 1], np.where(cls_t.ravel()[rep_] == PA, 6, 5), rng.uniform(0.6, 1.3, len(rep_)), minoff=ROAD_HALF + 0.6)   # espece 6 = riz (rizieres)   # herbe a ~0,5 m du bord de la chaussee
             else:
                 push(pxy[:, 0], pxy[:, 1], species_for(pxy[:, 2], len(rep_)), rng.uniform(0.75, 1.4, len(rep_)))
             got = np.vstack(trees[mark:]) if len(trees) > mark else np.zeros((0, 6))
