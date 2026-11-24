@@ -326,16 +326,12 @@ def main():
     rel_ = zc_ - ROADH[qi_].reshape(cx.shape)
     cls = np.where((rel_ > 1.5) & (slope > 24) & (offc <= 80), CL, cls)     # talus de deblai : falaise de laterite rouge
     cls = np.where(inside(U_water, cx, cy), WA, cls)
-    # BORD DE ROUTE COUVERT PAR LA TEXTURE D'HERBE : avant, l'accotement (sable/gravier clair « bord ») faisait 2 a 4,4 m de large de chaque cote,
-    # donc de la terre nue beige le long de la route. Maintenant seule une fine levre de gravier (0,3 m) borde l'asphalte, et toute la bande
-    # jusqu'a 5,5-7,9 m (largeur irreguliere, differente de chaque cote) porte la texture d'herbe ; la laterite rouge et la boue n'y sont plus.
-    LIP = 4.0
+    cls = np.where(offc <= SHOULDER, SH, cls)
+    # largeur d'accotement irreguliere (sable/gravier qui deborde dans l'herbe, differente de chaque cote)
     side_ = (jj >= jskip).astype(float)
     ss_ = S[ii]
     vw = SHOULDER + 2.4 * np.clip(0.5 + 0.55 * np.sin(ss_ * 0.061 + 1.7 + 2.3 * side_) * np.sin(ss_ * 0.017 + side_) + 0.3 * np.sin(ss_ * 0.23 + 4 * side_), 0, 1)
-    band_ = (offc > LIP) & (offc <= vw) & ((cls == LA) | (cls == MU))
-    cls = np.where(band_, GR, cls)
-    cls = np.where((offc <= LIP) & (cls != WA) & (cls != CL), SH, cls)
+    cls = np.where((offc <= vw) & (cls != WA) & (cls != CL), SH, cls)
 
     for code, name in CLS.items():
         sel = keep & (cls == code)
