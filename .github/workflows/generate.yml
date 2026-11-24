@@ -21,6 +21,9 @@ on:
       grass:
         description: "Densite d'herbe (1 = dense, 0.5 = moitie, 2 = tres dense)"
         default: "1.0"
+      collision_m:
+        description: "Collision au sol : distance de chaque cote de la route (m). Au-dela le relief reste visible mais sans collision (moins de memoire, ideal 2-4 Go). 0 = tout le sol"
+        default: "60"
       blender:
         description: "Produire aussi le glTF Blender (inutile pour le jeu, plus long)"
         type: boolean
@@ -70,7 +73,7 @@ jobs:
         run: python scripts/make_geometry.py --work work --grass "${{ inputs.grass }}" 2>&1 | tee -a run.log
 
       - name: Export RSMG (native game format, single zip)
-        run: python scripts/export_rsmg.py 2>&1 | tee -a run.log
+        run: COLLISION_M="${{ inputs.collision_m }}" python scripts/export_rsmg.py 2>&1 | tee -a run.log
 
       - name: Cache Blender
         if: inputs.blender

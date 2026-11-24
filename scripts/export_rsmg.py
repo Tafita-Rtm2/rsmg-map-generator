@@ -30,6 +30,9 @@ TEXSIZE = {"road_main": (768, 3072), "wall_white": (512, 512), "wall_ochre": (51
            "wall_brick": (512, 512), "wall_green": (512, 512), "roof_tile": (512, 512), "roof_tin": (512, 512),
            "road_minor": (512, 512), "track": (512, 512), "cable": (16, 16), "ligne": (16, 16), "water_surface": (256, 256), "pole": (512, 512), "beton": (512, 512), "bois": (512, 512), "trottoir": (512, 512)}
 GROUND = {"grass", "laterite", "rock", "forest", "paddy", "mud", "shoulder", "falaise", "water"}
+# Collision au sol seulement dans un couloir autour de la route (m de chaque cote). Au-dela, le relief reste VISIBLE (objets _fake_decor)
+# mais sans collision : le jeu n'indexe plus les millions de triangles de sol inutiles (memoire, chargement). 0 = tout le sol (ancien comportement).
+COLLISION_M = float(os.environ.get("COLLISION_M", "60"))
 PREFIX = {"GND": "_gencol_ground", "SOLID": "solid", "DECOR": "_fake_decor"}
 
 
@@ -109,6 +112,30 @@ def main():
         ti = t["index"]
         tx, ty = t["origin_xy"]
         data = json.load(open(f"{W}/tiles/tile_{ti:02d}.json"))
+        if COLLISION_M > 0:
+            from scipy.spatial import cKDTree
+            if "_rtree" not in globals():
+                seg = []                                            # route densifiee (un point tous les ~3 m) dans le repere des sommets
+                for a_, b_ in zip(R[:-1, :2], R[1:, :2]):
+                    k_ = max(1, int(np.hypot(*(b_ - a_)) // 3))
+                    seg.append(a_ + (b_ - a_) * (np.arange(k_)[:, None] / k_))
+                globals()["_rtree"] = cKDTree(np.vstack(seg + [R[-1:, :2]]) - np.array([ox, oy]))
+            nfar = 0
+            for mat in [m_ for m_, d_ in data.items() if d_["kind"] == "GND"]:
+                d = data[mat]
+                V_ = np.array(d["v"], float).reshape(-1, 3)
+                F_ = np.array(d["f"], int).reshape(-1, 3)
+                cen = V_[F_].mean(axis=1)[:, :2] + np.array([tx - ox, ty - oy])
+                far_ = _rtree.query(cen)[0] > COLLISION_M
+                if mat == "water":
+                    continue                                          # l'eau garde sa collision
+                if far_.any():
+                    nfar += int(far_.sum())
+                    d2 = dict(d); d2["kind"] = "DECOR"; d2["alias"] = mat
+                    d2["f"] = F_[far_].ravel().tolist()
+                    data[mat + "#far"] = d2
+                    d["f"] = F_[~far_].ravel().tolist()
+            print(f"troncon {ti}: collision au sol dans {COLLISION_M:g} m de la route ({nfar} triangles lointains sans collision)", flush=True)
         objects, vcount = [], 0          # objets en cours
         cur_parts, cur_v = [], 0
         out_objs = []
@@ -139,6 +166,7 @@ def main():
                 UV = np.array(d["uv"], float).reshape(-1, 2)
                 # V en 'haut = 1' tel quel : le jeu relit 1 - V (sinon textes et logos sont a l'envers)
                 F = np.array(d["f"], int).reshape(-1, 3)
+                mat = d.get("alias", mat)
                 key = KEY.get(mat, mat)
                 used_mats.add((mat, key))
                 for pv, puv, pf in pieces(V, UV, F):

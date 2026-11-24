@@ -21,3 +21,7 @@ Le jeu ne lit que le DEBUT de chaque `trees.txt` (un quota par troncon). Le gene
 les premiers arbres etaient tous dans les ~350 premiers metres de chaque troncon de 2 km, puis plus rien. `export_rsmg.py` les melange
 maintenant : un point par case de 60 m, puis un 2e par case... Tout debut de fichier est donc reparti sur toute la longueur du troncon.
 Rien a faire dans Blender pour ca : il suffit de relancer Actions > Generate map (les cartes deja generees gardent l'ancien ordre).
+
+## Collision au sol en couloir (option `collision_m`, defaut 60)
+Seuls les triangles de sol a moins de `collision_m` metres de la route gardent la collision (`_gencol_ground`). Le relief plus loin reste
+visible (`_fake_decor`) mais le jeu ne l'indexe plus. `0` = tout le sol comme avant. Murs, maisons, poteaux gardent leur collision.
