@@ -252,6 +252,12 @@ def main():
     # creation : les ~270 premiers arbres tombaient dans les 350 premiers metres du troncon, le reste de la route restait vide.
     # Maintenant : par classe, on prend d'abord un point par case de 60 m, puis un 2e par case, etc. (au hasard dans chaque case),
     # donc n'importe quel debut de fichier est reparti sur toute la longueur du troncon.
+    # HERBE : le jeu garde un nombre limite de touffes par zone de 250 m (les PREMIERES du fichier). Avant, l'ordre etait aleatoire
+    # par case de 60 m : les touffes retenues etaient reparties jusqu'a 60 m de la route, donc peu d'herbe au bord de la chaussee
+    # et beaucoup trop loin. Maintenant l'herbe est classee par distance a la route (les plus proches d'abord).
+    from scipy.spatial import cKDTree
+    _gtree = cKDTree(np.column_stack([R[:, 0] - ox, -(R[:, 1] - oy)]))
+
     def spread(lines):
         by = {}
         for ln in lines:
@@ -261,7 +267,12 @@ def main():
         for c_, items in by.items():
             seen = {}
             keyed = []
-            for ix, iz, ln in [items[j] for j in rng.permutation(len(items))]:
+            if c_ == "G":
+                pts_ = np.array([[float(l.split()[0]), float(l.split()[2])] for _, _, l in items])
+                d_ = _gtree.query(pts_)[0]
+                keyed = [(float(d_[j]) + rng.uniform(0, 4.0), items[j][2]) for j in range(len(items))]
+            else:
+              for ix, iz, ln in [items[j] for j in rng.permutation(len(items))]:
                 n_ = seen.get((ix, iz), 0)
                 seen[(ix, iz)] = n_ + 1
                 keyed.append((n_ + rng.uniform(0, 0.99), ln))
