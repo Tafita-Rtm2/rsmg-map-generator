@@ -333,15 +333,15 @@ def main():
                 seen.add(nm)
                 stops.append((nm, int(i)))
     stops.append((f"Fin km {man['km_to']:g}", n - 6))
-    # UN POINT DE DEPART TOUS LES 3 KM, du point 0 a la fin : poses exactement sur la voie de droite de la route principale
+    # UN POINT DE DEPART TOUS LES 2 A 4,5 KM (espacement variable), du point 0 a la fin : poses exactement sur la voie de droite de la route principale
     # (position = point de l'axe + 1,75 m, cap = sens de la route), proposes dans le choix du depart de la carte.
     km_arr = R[:, 3]
-    k_ = 3.0
+    k_ = float(rng.uniform(1.5, 3.5))                 # espacement VARIABLE (2 a 4,5 km), pas toujours 3 km
     while k_ < km_arr[-1] - 0.3:
         j_ = int(np.argmin(np.abs(km_arr - k_)))
         if 5 < j_ < n - 6:
-            stops.append((f"Depart km {float(man['km_from']) + k_:g}", j_))
-        k_ += 3.0
+            stops.append((f"Depart km {float(man['km_from']) + k_:.1f}", j_))
+        k_ += float(rng.uniform(2.0, 4.5))
     stops.sort(key=lambda s: s[1])
     with open(f"{base}/{name}/rsmg_stops.txt", "w") as f:
         f.write("# Arrets de bus de la carte : nom, x, z, cap, cote (D/G), options\n")
