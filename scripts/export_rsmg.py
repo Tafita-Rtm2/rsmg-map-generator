@@ -222,6 +222,33 @@ def main():
         else:
             cls, pick = "G", rng.uniform(0, 1)
         per[ti].append(f"{x:.2f} {y:.2f} {z:.2f} {cls} {size:.2f} {pick:.2f}")
+    # ORDRE DES POINTS : le jeu ne lit que le DEBUT de chaque trees.txt (quota par troncon). Avant, les points etaient dans l'ordre de
+    # creation : les ~270 premiers arbres tombaient dans les 350 premiers metres du troncon, le reste de la route restait vide.
+    # Maintenant : par classe, on prend d'abord un point par case de 60 m, puis un 2e par case, etc. (au hasard dans chaque case),
+    # donc n'importe quel debut de fichier est reparti sur toute la longueur du troncon.
+    def spread(lines):
+        by = {}
+        for ln in lines:
+            x_, _y, z_, c_ = ln.split()[:4]
+            by.setdefault(c_, []).append((int(float(x_) // 60), int(float(z_) // 60), ln))
+        out = []
+        for c_, items in by.items():
+            seen = {}
+            keyed = []
+            for ix, iz, ln in [items[j] for j in rng.permutation(len(items))]:
+                n_ = seen.get((ix, iz), 0)
+                seen[(ix, iz)] = n_ + 1
+                keyed.append((n_ + rng.uniform(0, 0.99), ln))
+            keyed.sort(key=lambda t: t[0])
+            out.append([ln for _, ln in keyed])
+        res = []                                    # classes melangees (le jeu compte chaque classe a part)
+        for i in range(max((len(o) for o in out), default=0)):
+            for o in out:
+                if i < len(o):
+                    res.append(o[i])
+        return res
+    for ti in per:
+        per[ti] = spread(per[ti])
     for ti, lines in per.items():
         os.makedirs(f"{tiles_dir}/c{ti:02d}", exist_ok=True)
         with open(f"{tiles_dir}/c{ti:02d}/trees.txt", "w") as f:
