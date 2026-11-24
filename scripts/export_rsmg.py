@@ -33,7 +33,10 @@ GROUND = {"grass", "laterite", "rock", "forest", "paddy", "mud", "shoulder", "fa
 # Collision au sol seulement dans un couloir autour de la route (m de chaque cote). Au-dela, le relief reste VISIBLE (objets _fake_decor)
 # mais sans collision : le jeu n'indexe plus les millions de triangles de sol inutiles (memoire, chargement). 0 = tout le sol (ancien comportement).
 COLLISION_M = float(os.environ.get("COLLISION_M", "60"))
-PREFIX = {"GND": "_gencol_ground", "SOLID": "solid", "DECOR": "_fake_decor"}
+# FAR = relief lointain visible mais sans collision. Il ne doit PAS s'appeler `_fake_` : le jeu traite ces objets comme des halos de
+# lampadaire (melange additif, opacite = nuit), donc le relief au-dela du couloir etait INVISIBLE le jour (bande etroite + falaises etirees).
+# `_nocol_` = pas de collision, rendu normal.
+PREFIX = {"GND": "_gencol_ground", "SOLID": "solid", "DECOR": "_fake_decor", "FAR": "_nocol_far"}
 
 
 # ----------------------------------------------------------------------------- ecriture 3DS
@@ -129,7 +132,7 @@ def main():
                 far_ = _rtree.query(cen)[0] > COLLISION_M
                 if far_.any():
                     nfar += int(far_.sum())
-                    d2 = dict(d); d2["kind"] = "DECOR"; d2["alias"] = mat
+                    d2 = dict(d); d2["kind"] = "FAR"; d2["alias"] = mat
                     d2["f"] = F_[far_].ravel().tolist()
                     data[mat + "#far"] = d2
                     d["f"] = F_[~far_].ravel().tolist()
@@ -137,7 +140,7 @@ def main():
         objects, vcount = [], 0          # objets en cours
         cur_parts, cur_v = [], 0
         out_objs = []
-        counters = {"GND": 0, "SOLID": 0, "DECOR": 0}
+        counters = {"GND": 0, "SOLID": 0, "DECOR": 0, "FAR": 0}
 
         def flush_obj(kind):
             nonlocal cur_parts, cur_v
@@ -154,7 +157,7 @@ def main():
             out_objs.append((nm, V, UV, F, fm, mats))
             cur_parts, cur_v = [], 0
 
-        for kind in ("GND", "SOLID", "DECOR"):
+        for kind in ("GND", "SOLID", "DECOR", "FAR"):
             for mat, d in data.items():
                 if d["kind"] != kind:
                     continue
