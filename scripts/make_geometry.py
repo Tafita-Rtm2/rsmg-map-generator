@@ -70,7 +70,7 @@ def main():
     ap.add_argument("--max-trees", type=int, default=600000)
     ap.add_argument("--grass", type=float, default=1.0)
     ap.add_argument("--grass-cap", type=int, default=60000)
-    ap.add_argument("--tree-cap", type=int, default=6000)
+    ap.add_argument("--tree-cap", type=int, default=9000)
     ap.add_argument("--seed", type=int, default=7)
     a = ap.parse_args()
     W = a.work
@@ -1054,7 +1054,7 @@ def main():
     TREE_D = {FO: 1 / 40, GR: 1 / 1100, LA: 1 / 2500}
     BUSH_D = {FO: 1 / 80, GR: 1 / 300, LA: 1 / 600, CL: 1 / 250, RO: 1 / 900}
     # touffes d'herbe par m2 : (jusqu'a 15 m de la route, jusqu'a 60 m, au-dela)
-    GRASS_D = {SH: (0.6, 0.0, 0.0), GR: (1.0, 0.30, 0.03), PA: (1.2, 0.90, 0.30), FO: (0.8, 0.5, 0.15), LA: (0.4, 0.10, 0.015),
+    GRASS_D = {SH: (0.6, 0.0, 0.0), GR: (1.2, 0.55, 0.08), PA: (1.2, 0.90, 0.30), FO: (0.9, 0.6, 0.2), LA: (0.5, 0.20, 0.03),
                CL: (0.15, 0.10, 0.03), RO: (0.03, 0.03, 0.01), MU: (0.3, 0.1, 0.01)}
     veg_rows = []
     gcap = int(a.grass_cap * a.grass)
@@ -1073,6 +1073,18 @@ def main():
             else:
                 for code, dv in (TREE_D if kindv == "t" else BUSH_D).items():
                     dq = np.where(cls_t == code, dv, dq)
+            if kindv == "t":
+                # taches de foret : le bruit lisse (grandes ondes) donne des zones de foret DENSE (arbres serres, des 3 m du bord de
+                # la route), des zones de foret CLAIRE (arbres espaces) et des clairieres ; les forets OSM (FO) restent denses
+                cxq_ = (Q_[0][:, 0] + Q_[1][:, 0] + Q_[2][:, 0] + Q_[3][:, 0]).reshape(cls_t.shape) / 4.0
+                cyq_ = (Q_[0][:, 1] + Q_[1][:, 1] + Q_[2][:, 1] + Q_[3][:, 1]).reshape(cls_t.shape) / 4.0
+                nz_ = (0.5 * np.sin(cxq_ / 410.0 + 1.3) * np.sin(cyq_ / 360.0 + 0.7)
+                       + 0.3 * np.sin(cxq_ / 170.0 + cyq_ / 230.0 + 2.1) + 0.2 * np.sin(cxq_ / 75.0 - cyq_ / 95.0))
+                dense_ = nz_ > 0.28
+                light_ = (nz_ > -0.08) & ~dense_
+                green_ = (cls_t == GR) | (cls_t == LA)
+                dq = np.where(green_ & dense_, np.where(cls_t == GR, 1 / 28.0, 1 / 55.0),
+                              np.where(green_ & light_, np.where(cls_t == GR, 1 / 160.0, 1 / 300.0), dq))
             cnt = rng.poisson(area_t * dq * keep_t).ravel()
             rep_ = np.repeat(np.arange(len(cnt)), cnt)
             if not len(rep_):
@@ -1091,7 +1103,7 @@ def main():
             got = np.vstack(trees[mark:]) if len(trees) > mark else np.zeros((0, 6))
             del trees[mark:]
             if kindv == "g" and len(got) > gcap:        # priorite aux touffes les plus proches de la route
-                dist_ = tree.query(got[:, 1:3])[0] + rng.uniform(0, 25, len(got))
+                dist_ = tree.query(got[:, 1:3])[0] + rng.uniform(0, 4, len(got))
                 got = got[np.argsort(dist_)[:gcap]]
             elif kindv == "t" and len(got) > a.tree_cap:
                 got = got[rng.choice(len(got), a.tree_cap, replace=False)]
