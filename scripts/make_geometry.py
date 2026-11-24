@@ -1054,7 +1054,7 @@ def main():
     TREE_D = {FO: 1 / 40, GR: 1 / 1100, LA: 1 / 2500}
     BUSH_D = {FO: 1 / 80, GR: 1 / 300, LA: 1 / 600, CL: 1 / 250, RO: 1 / 900}
     # touffes d'herbe par m2 : (jusqu'a 15 m de la route, jusqu'a 60 m, au-dela)
-    GRASS_D = {GR: (1.0, 0.30, 0.03), PA: (1.0, 0.40, 0.06), FO: (0.8, 0.5, 0.15), LA: (0.4, 0.10, 0.015),
+    GRASS_D = {SH: (0.6, 0.0, 0.0), GR: (1.0, 0.30, 0.03), PA: (1.0, 0.40, 0.06), FO: (0.8, 0.5, 0.15), LA: (0.4, 0.10, 0.015),
                CL: (0.15, 0.10, 0.03), RO: (0.03, 0.03, 0.01), MU: (0.3, 0.1, 0.01)}
     veg_rows = []
     gcap = int(a.grass_cap * a.grass)
@@ -1085,7 +1085,7 @@ def main():
             if kindv == "b":
                 push(pxy[:, 0], pxy[:, 1], np.full(len(rep_), 4), rng.uniform(0.7, 1.5, len(rep_)))
             elif kindv == "g":
-                push(pxy[:, 0], pxy[:, 1], np.full(len(rep_), 5), rng.uniform(0.6, 1.3, len(rep_)), minoff=SHOULDER + 0.25)
+                push(pxy[:, 0], pxy[:, 1], np.full(len(rep_), 5), rng.uniform(0.6, 1.3, len(rep_)), minoff=ROAD_HALF + 0.6)   # herbe a ~0,5 m du bord de la chaussee
             else:
                 push(pxy[:, 0], pxy[:, 1], species_for(pxy[:, 2], len(rep_)), rng.uniform(0.75, 1.4, len(rep_)))
             got = np.vstack(trees[mark:]) if len(trees) > mark else np.zeros((0, 6))
