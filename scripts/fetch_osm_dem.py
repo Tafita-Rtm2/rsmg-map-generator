@@ -86,14 +86,43 @@ def road_graph(road, fwd, start_ll, km_to):
 
 
 def main_path(G, pos, start_xy):
+    from scipy.spatial import cKDTree
     ids = list(G.nodes)
     arr = np.array([pos[n] for n in ids])
-    s = ids[int(np.argmin(np.hypot(arr[:, 0] - start_xy[0], arr[:, 1] - start_xy[1])))]
-    H = G.subgraph(nx.node_connected_component(G, s))
-    dist = nx.single_source_dijkstra_path_length(H, s, weight="weight")
-    f = max(dist, key=dist.get)
+    # 1) recoller les troncons OSM dont les extremites ne se touchent pas (trous < 60 m, ex. carrefours, double chaussee)
+    comp_of = {}
+    for ci, comp in enumerate(nx.connected_components(G)):
+        for n in comp:
+            comp_of[n] = ci
+    tree = cKDTree(arr)
+    added = 0
+    for i, j in tree.query_pairs(60.0):
+        a_, b_ = ids[i], ids[j]
+        if comp_of[a_] != comp_of[b_] and not G.has_edge(a_, b_):
+            G.add_edge(a_, b_, weight=float(np.hypot(*(arr[i] - arr[j]))))
+            added += 1
+    if added:
+        print(f"{added} jonction(s) ajoutee(s) entre troncons separes de moins de 60 m", flush=True)
+    # 2) parmi les morceaux de route proches du depart (< 25 km), prendre celui qui donne la route continue la plus longue
+    dstart = np.hypot(arr[:, 0] - start_xy[0], arr[:, 1] - start_xy[1])
+    best = None
+    for comp in nx.connected_components(G):
+        idx = [ids.index(n) for n in comp] if len(comp) < 50 else [k for k, n in enumerate(ids) if n in comp]
+        k0 = idx[int(np.argmin(dstart[idx]))]
+        if dstart[k0] > 25000:
+            continue
+        H = G.subgraph(comp)
+        dist = nx.single_source_dijkstra_path_length(H, ids[k0], weight="weight")
+        f = max(dist, key=dist.get)
+        if best is None or dist[f] > best[0]:
+            best = (dist[f], ids[k0], f, H, float(dstart[k0]))
+    if best is None:
+        sys.exit("Aucune route a moins de 25 km du point de depart : donne start_lat / start_lon")
+    length, s, f, H, d0 = best
     path = nx.dijkstra_path(H, s, f, weight="weight")
-    print(f"depart {pos[s]} -> arrivee {pos[f]} : {dist[f] / 1000:.1f} km de route continue", flush=True)
+    print(f"depart {pos[s]} (a {d0:.0f} m du point demande) -> arrivee {pos[f]} : {length / 1000:.1f} km de route continue", flush=True)
+    if length < 5000:
+        print("ATTENTION : route continue tres courte, la route est probablement coupee dans OSM ; donne start_lat / start_lon", flush=True)
     return np.array([pos[n] for n in path])
 
 
