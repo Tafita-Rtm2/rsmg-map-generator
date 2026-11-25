@@ -846,7 +846,7 @@ def main():
     print(f"lampadaires : {len(lamps_)}, passages pietons : {n_zeb}", flush=True)
 
     # --- bornes kilometriques (sommet rouge + code de la route, corps blanc + ville + km), panneaux de villes
-    DEST = {"RN1": ("ANTANANARIVO", "TSIROANOMANDIDY"), "RN2": ("ANTANANARIVO", "MORAMANGA"), "RN7": ("ANTANANARIVO", "ANTSIRABE")}
+    DEST = {"RN1": ("ANTANANARIVO", "TSIROANOMANDIDY"), "RN2": ("ANTANANARIVO", "MORAMANGA"), "RN7": ("ANTANANARIVO", "ANTSIRABE"), "RN4": ("ANTANANARIVO", "MAHAJANGA")}
     town_a, town_b = DEST.get(str(road["road"]).upper().replace(" ", ""), ("", ""))
     code_ = str(road["road"]).upper().replace(" ", "")
     km0_ = int(road["km_from"])

@@ -17,6 +17,7 @@ DEFAULT_START = {
     "RN1": (-18.950, 47.470),      # Anosizato, Antananarivo -> vers Tsiroanomandidy
     "RN2": (-18.9400, 47.4956),    # Anosizato Andrefana -> vers Moramanga (puis Toamasina)
     "RN7": (-18.9400, 47.4956),    # Anosizato Andrefana -> vers Antsirabe (puis Fianarantsoa)
+    "RN4": (-18.9400, 47.4956),    # Anosizato Andrefana -> vers Mahajanga
 }
 UA = {"User-Agent": "rsmg-map-generator/1.0"}
 

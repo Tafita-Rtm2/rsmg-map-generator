@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       road:
-        description: "Route : RN1, RN2 (vers Moramanga) ou RN7 (vers Antsirabe)"
+        description: "Route : RN1, RN2 (vers Moramanga), RN4 (vers Mahajanga) ou RN7 (vers Antsirabe)"
         default: "RN1"
         required: true
       km_from:
