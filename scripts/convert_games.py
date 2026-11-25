@@ -113,7 +113,9 @@ def main():
     a = ap.parse_args()
     tmp = tempfile.mkdtemp()
     with zipfile.ZipFile(a.zip) as z:
-        z.extractall(tmp)
+        names = z.namelist()
+        dest = tmp if any(n.startswith("RSMG/maps/") for n in names) else f"{tmp}/RSMG/maps"
+        z.extractall(dest)
     maps = glob.glob(f"{tmp}/RSMG/maps/*.map.txt")
     if not maps:
         sys.exit("Archive RSMG invalide : RSMG/maps/<nom>.map.txt introuvable")

@@ -395,14 +395,15 @@ def main():
     pv.save(f"{base}/{name}/preview.png")
     open(f"{base}/{name}.map.txt", "w").write(f"[map]\nbaseDir={name}\nmodelsDir={name}\ntextures=textures\npreview=preview.png\n")
 
-    # archives : a extraire dans /sdcard/ (elles contiennent deja RSMG/maps/...)
+    # archive UNIQUE : les fichiers de la carte sont directement a la racine du zip
+    # (<nom>.map.txt + dossier <nom>/), sans dossier RSMG/maps/ ni zip imbrique.
     os.makedirs(DIST, exist_ok=True)
     zp = f"{DIST}/{name}_RSMG.zip"
     with zipfile.ZipFile(zp, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
-        for rt, _, files in os.walk(ROOT):
-            for fn in files:
+        for rt, _, files in os.walk(base):
+            for fn in sorted(files):
                 full = os.path.join(rt, fn)
-                z.write(full, os.path.relpath(full, ROOT))
+                z.write(full, os.path.relpath(full, base))
     for fn in sorted(os.listdir(DIST)):
         print(fn, round(os.path.getsize(f"{DIST}/{fn}") / 1e6, 2), "Mo")
 

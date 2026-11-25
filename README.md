@@ -10,5 +10,5 @@ Le format est decrit dans `manifest.json` (dans l'archive). Donnees (c) OpenStre
 
 ## Sortie
 - `RN1_km0-20_RSMG.zip` / `.7z` : **format natif de Simulator MG** (cartes .map.txt + parties .3ds, trees.txt, arrets, trafic).
-  A extraire dans `/sdcard/` : le dossier `RSMG/maps/` est deja dedans. Aucune modification du jeu necessaire.
+  Un seul zip, a plat : on tombe directement sur `<nom>.map.txt` et le dossier `<nom>/`. A extraire dans `RSMG/maps/`.
 - `RN1_km0-20.zip` / `.7z` : glTF (Blender), pour d'autres usages.

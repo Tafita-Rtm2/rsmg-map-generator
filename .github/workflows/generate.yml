@@ -116,7 +116,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${{ inputs.road }}-km${{ inputs.km_from }}-${{ inputs.km_to }}-r${{ github.run_number }}"
-          gh release create "$TAG" dist/* --title "$TAG" --notes "Carte RSMG generee automatiquement (OpenStreetMap + Copernicus DEM). A extraire dans /sdcard/ (le zip contient deja RSMG/maps/...)."
+          gh release create "$TAG" dist/* --title "$TAG" --notes "Carte RSMG generee automatiquement (OpenStreetMap + Copernicus DEM). Un seul zip : les fichiers de la carte (.map.txt + dossier) sont directement a la racine, a extraire dans RSMG/maps/."
 
       - name: Publish log
         if: always()
