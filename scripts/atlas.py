@@ -101,3 +101,18 @@ def draw_panneau(w, h, text, style="ville", sub=""):
         f2 = fit(d, sub, w * 0.8, int(h * 0.2))
         d.text((w / 2, h * 0.76), sub, font=f2, fill=fg, anchor="mm")
     return im
+
+
+def draw_bienvenue(w, h, town):
+    """Plaque d'entree de ville : BIENVENUE A / TONGASOA ETO + nom de la ville (bandeau vert)."""
+    im = Image.new("RGB", (w, h), (244, 246, 244))
+    d = ImageDraw.Draw(im)
+    green = (0, 140, 84)
+    d.rectangle([0, 0, w - 1, h - 1], outline=green, width=max(8, h // 40))
+    f = fit(d, "BIENVENUE À / TONGASOA ETO", w * 0.86, int(h * 0.14))
+    d.text((w / 2, h * 0.22), "BIENVENUE À", font=f, fill=green, anchor="mm")
+    d.text((w / 2, h * 0.40), "TONGASOA ETO", font=f, fill=green, anchor="mm")
+    d.rectangle([w * 0.03, h * 0.54, w * 0.97, h * 0.88], fill=green)
+    f2 = fit(d, town, w * 0.86, int(h * 0.26))
+    d.text((w / 2, h * 0.71), town, font=f2, fill=(255, 255, 255), anchor="mm")
+    return im

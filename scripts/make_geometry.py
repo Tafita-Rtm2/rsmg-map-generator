@@ -12,6 +12,7 @@ from shapely.geometry import LineString, Point, Polygon
 from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 import atlas as atl
+from PIL import Image
 import extras as ex3d
 from common import transformers, load_json, save_json
 
@@ -856,8 +857,8 @@ def main():
         q_ = P[i_] - N[i_] * 7.0
         mat_, uv_ = borne_at.add(lambda w_, h_, kk=km0_ + km_: atl.draw_borne(w_, h_, code_, town_a, kk, seed=kk))
         KIND[mat_] = "SOLID"
-        A(mat_).add(*ex3d.skin_box(q_[0], q_[1], float(terrain_h(q_[0], q_[1])), float(heading[i_]) + math.pi / 2,
-                                   0.27, 0.16, 1.2, big=uv_, plain=(uv_[0] + 0.01, uv_[1] + 0.01)))
+        A(mat_).add(*ex3d.borne_arch(q_[0], q_[1], float(terrain_h(q_[0], q_[1])), float(heading[i_]) + math.pi / 2,
+                                     uv_, (uv_[0] + 0.01, uv_[1] + 0.01)))
         n_bor += 1
     sign_at = atl.Atlas("panneau", 512, 192)
     n_sig = 0
@@ -893,7 +894,41 @@ def main():
     if town_b:
         for km_ in range(0, int(S[-1] / 1000) + 1, 5):
             put_sign(int(np.argmin(np.abs(S - (km_ * 1000 + 400)))), -1, town_b, "dest", "→")
-    print(f"bornes : {n_bor}, panneaux : {n_sig}", flush=True)
+    # --- grandes plaques d'entree de ville (BIENVENUE / TONGASOA ETO) et panneaux publicitaires (assets/pub_dynamic.jpg)
+    pub_at = atl.Atlas("panneau_pub", 1024, 512)
+    AD_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "pub_dynamic.jpg")
+    n_pub = 0
+
+    def put_board(i_, side_, img_fn):
+        nonlocal n_pub
+        if i_ < 3 or i_ > n - 4:
+            return
+        q_ = P[i_] + N[i_] * side_ * 9.0
+        if not shapely.contains_xy(corridor, q_[0], q_[1]):
+            return
+        if U_build is not None and shapely.intersects(U_build, Point(q_[0], q_[1]).buffer(2.5)):
+            return
+        z_ = float(terrain_h(q_[0], q_[1]))
+        mat_, uv_ = pub_at.add(img_fn)
+        KIND[mat_] = "SOLID"
+        for off_ in (-1.2, 1.2):
+            pp_ = q_ + np.array([math.cos(heading[i_]), math.sin(heading[i_])]) * off_
+            A("pole").add(*ex3d.cylinder(pp_[0], pp_[1], z_, 3.5, 0.07, 0.07, 6))
+        A(mat_).add(*ex3d.skin_box(q_[0], q_[1], z_ + 1.95, float(heading[i_]) + math.pi / 2, 1.5, 0.03, 1.5, big=uv_,
+                                   plain=(uv_[0] + 0.01, uv_[1] + 0.01)))
+        n_pub += 1
+    has_ad = os.path.exists(AD_PATH)
+    for nm_, i_, rr_ in named:
+        if rr_ < 180:                       # seulement villes et grandes villes
+            continue
+        k_ = int(rr_ / STEP)
+        put_board(i_ - k_ - int(30 / STEP), -1, lambda w_, h_, tt=nm_.upper(): atl.draw_bienvenue(w_, h_, tt))
+        put_board(i_ + k_ + int(30 / STEP), 1, lambda w_, h_, tt=nm_.upper(): atl.draw_bienvenue(w_, h_, tt))
+        if has_ad:
+            ad_fn = lambda w_, h_: Image.open(AD_PATH).convert("RGB").resize((w_, h_))
+            put_board(i_ - k_ - int(80 / STEP), 1, ad_fn)
+            put_board(i_ + k_ + int(80 / STEP), -1, ad_fn)
+    print(f"bornes : {n_bor}, panneaux : {n_sig}, plaques d'entree / pub : {n_pub}", flush=True)
 
     # --- marches de bord de route, cash points, sacs de charbon (villages) + marches OSM
     extra_fp = []
@@ -982,7 +1017,7 @@ def main():
                 put(ex3d.stall(pt_[0], pt_[1], float(terrain_h(pt_[0], pt_[1])), ang_, rng, charcoal=bool(rng.random() < 0.2)), pt_[0], pt_[1], 1.6)
                 n_stall += 1
     print(f"etals : {n_stall}, cash points : {n_cash}, piles de sacs : {n_sacks}", flush=True)
-    atl_pages = borne_at.save(f"{W}/tex") + sign_at.save(f"{W}/tex") + ens_at.save(f"{W}/tex")
+    atl_pages = borne_at.save(f"{W}/tex") + sign_at.save(f"{W}/tex") + ens_at.save(f"{W}/tex") + pub_at.save(f"{W}/tex")
     U_build = union(occupied + new_polys + [Point(a_, b_).buffer(c_ + 0.5) for a_, b_, c_ in extra_fp])
 
     # ponts : dalle de beton + garde-corps ; eau des rivieres

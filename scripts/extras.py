@@ -277,3 +277,46 @@ def shop(x, y, z, ang, rng, sign_mat, sign_uv, wall="wall_ochre"):
     add(sign_mat, skin_box(x + bx[0] * 1.56, y + bx[1] * 1.56, z + 2.0, ang, 1.2, 0.03, 0.5, big=sign_uv,
                            plain=(sign_uv[0] + 0.01, sign_uv[1] + 0.01)))
     return parts
+
+
+def borne_arch(cx, cy, z0, ang, big, plain, hw=0.255, hb=0.15, h=1.2, zb=0.14):
+    """Borne kilometrique malgache : corps legerement conique, SOMMET ARRONDI (arche), socle plus large.
+    Faces avant/arriere portent l'image (big = u0,v0,u1,v1), les cotes une couleur unie (plain)."""
+    ax = np.array([math.cos(ang), math.sin(ang)])
+    bx = np.array([-ax[1], ax[0]])
+    rx, ry = 0.225, 0.27
+    zs = h - ry
+    prof = [(-hw, zb), (hw, zb)] + [(rx * math.cos(t), zs + ry * math.sin(t)) for t in np.linspace(0, math.pi, 13)]
+    u0, v0, u1, v1 = big
+    V, UV, F = [], [], []
+
+    def pos(x, z, s):
+        return [cx + ax[0] * x + bx[0] * s * hb, cy + ax[1] * x + bx[1] * s * hb, z0 + z]
+
+    def tuv(x, z, flip):
+        uu = (x + hw) / (2 * hw)
+        if flip:
+            uu = 1 - uu
+        return [u0 + uu * (u1 - u0), v0 + (z - zb) / (h - zb) * (v1 - v0)]
+    m = len(prof)
+    zc = (zb + h) / 2
+    first = {}
+    for s, flip in ((-1, False), (1, True)):
+        base = len(V)
+        first[s] = base
+        V.append(pos(0.0, zc, s)); UV.append(tuv(0.0, zc, flip))
+        for x, z in prof:
+            V.append(pos(x, z, s)); UV.append(tuv(x, z, flip))
+        for i in range(m):
+            a, b = base + 1 + i, base + 1 + (i + 1) % m
+            F.append([base, a, b] if s == -1 else [base, b, a])
+    # flancs (couleur unie)
+    for i in range(m):
+        (xa, za), (xb, zb_) = prof[i], prof[(i + 1) % m]
+        b0 = len(V)
+        V += [pos(xa, za, -1), pos(xb, zb_, -1), pos(xb, zb_, 1), pos(xa, za, 1)]
+        UV += [list(plain)] * 4
+        F += [[b0, b0 + 2, b0 + 1], [b0, b0 + 3, b0 + 2]]
+    V0, UV0, F0 = np.array(V, float), np.array(UV, float), np.array(F, int)
+    Vs, UVs, Fs = skin_box(cx, cy, z0, ang, hw + 0.05, hb + 0.02, zb, big=None, plain=plain)
+    return np.vstack([V0, Vs]), np.vstack([UV0, UVs]), np.vstack([F0, Fs + len(V0)])
