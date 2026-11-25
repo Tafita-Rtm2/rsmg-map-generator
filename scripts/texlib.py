@@ -374,16 +374,30 @@ def route(W=768, H=3072, rng=RNG, edge_lines=True, center_line=False):
         img = img * (1 - 0.13 * inside)[..., None]
         img = img * (1 - 0.18 * np.clip(gaussian_filter(edge, 1.2), 0, 1))[..., None]
 
-    # nids de poule discrets, rebord clair
-    for _ in range(2):
-        r = rng.uniform(0.10, 0.22) * mpx
-        cx, cy = rng.choice([0.9, 2.2, 4.8, 6.1]) * mpx, rng.uniform(0, H)
+    # nids de poule bien visibles : ovales de 0,3 a 0,9 m, fond sombre avec ombre en haut, gravats clairs en bas, rebord casse
+    for _ in range(10):
+        r = rng.uniform(0.15, 0.45) * mpx
+        cx, cy = rng.choice([0.7, 1.3, 2.2, 3.1, 3.9, 4.8, 5.6, 6.3]) * mpx, rng.uniform(0, H)
         yy = ((np.arange(H) - cy + H / 2) % H) - H / 2
         xx = np.arange(W) - cx
-        q = (xx[None, :] / (r * 1.25)) ** 2 + (yy[:, None] / r) ** 2
-        hole = smooth(1.0 - q, 0, 0.25)
-        rim = smooth(1.35 - q, 0, 0.2) - smooth(1.0 - q, 0, 0.1)
-        img = img * (1 - 0.4 * hole)[..., None] + np.array([150, 138, 112.0]) * (0.12 * np.clip(rim, 0, 1))[..., None]
+        wob = 1.0 + 0.18 * np.sin(np.arctan2(yy[:, None], xx[None, :] + 1e-6) * 3 + rng.uniform(0, 6))
+        q = ((xx[None, :] / (r * 1.3)) ** 2 + (yy[:, None] / r) ** 2) * wob
+        hole = smooth(1.0 - q, 0, 0.18)
+        rim = np.clip(smooth(1.5 - q, 0, 0.25) - smooth(1.0 - q, 0, 0.1), 0, 1)
+        shade = np.clip(-yy[:, None] / (r + 1e-6), -1, 1)          # haut du trou plus sombre, bas plus clair (profondeur)
+        img = img * (1 - hole * (0.62 - 0.18 * shade))[..., None]
+        img = img + (np.array([138, 124, 98.0]) * (0.22 * rim))[..., None]                       # rebord de bitume casse / sable
+        img = img + (np.array([120, 110, 92.0]) * (0.20 * hole * np.clip(shade, 0, 1)))[..., None]  # gravats au fond
+    # zones d'asphalte arrachees (plaques plus grandes, bord irregulier)
+    for _ in range(4):
+        r = rng.uniform(0.5, 1.1) * mpx
+        cx, cy = rng.uniform(0.5, 6.5) * mpx, rng.uniform(0, H)
+        yy = ((np.arange(H) - cy + H / 2) % H) - H / 2
+        xx = np.arange(W) - cx
+        q = (xx[None, :] / (r * 0.8)) ** 2 + (yy[:, None] / (r * 1.6)) ** 2 + 0.25 * noise(H, W, 18)
+        zone = smooth(1.0 - q, 0, 0.35)
+        gravel = ramp(fbm(H, W, 14, 3), [(0, (104, 92, 74)), (1, (150, 136, 108))])
+        img = lerp(img, gravel, 0.55 * zone[..., None])
 
     # lignes de rive delavees (la ligne centrale n'existe pas sur les routes nationales rurales)
     wear = n01(noise(H, W, 11) + 0.8 * noise(H, W, W / 5))
