@@ -386,8 +386,8 @@ def route(W=768, H=3072, rng=RNG, edge_lines=True, center_line=False):
         rim = np.clip(smooth(1.5 - q, 0, 0.25) - smooth(1.0 - q, 0, 0.1), 0, 1)
         shade = np.clip(-yy[:, None] / (r + 1e-6), -1, 1)          # haut du trou plus sombre, bas plus clair (profondeur)
         img = img * (1 - hole * (0.62 - 0.18 * shade))[..., None]
-        img = img + (np.array([138, 124, 98.0]) * (0.22 * rim))[..., None]                       # rebord de bitume casse / sable
-        img = img + (np.array([120, 110, 92.0]) * (0.20 * hole * np.clip(shade, 0, 1)))[..., None]  # gravats au fond
+        img = img + np.array([138, 124, 98.0])[None, None, :] * (0.22 * rim)[..., None]                       # rebord de bitume casse / sable
+        img = img + np.array([120, 110, 92.0])[None, None, :] * (0.20 * hole * np.clip(shade, 0, 1))[..., None]  # gravats au fond
     # zones d'asphalte arrachees (plaques plus grandes, bord irregulier)
     for _ in range(4):
         r = rng.uniform(0.5, 1.1) * mpx
