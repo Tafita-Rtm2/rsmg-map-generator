@@ -303,6 +303,35 @@ def main():
     v11 = (ii + 1) * m + jj + 1
     v01 = ii * m + jj + 1
     keep = jj != jskip
+
+    # ---- CORRECTIF « glissement de terrain sur la route » ------------------------------------------------
+    # Dans les lacets (et partout ou la route repasse a cote d'elle-meme), la bande de relief de chaque station
+    # s'etend sur 300 m de chaque cote, donc PAR-DESSUS l'autre branche de la route. Les grands quadrilateres du relief
+    # (offsets 20 a 300 m) sont interpoles lineairement entre deux hauteurs differentes : ils recouvraient la chaussee de
+    # l'autre branche (terrain brun/orange a aretes diagonales, vehicules et departs « dans la colline »).
+    # On retire donc tout quadrilatere qui passe a moins de ROAD_HALF + 5 m de l'axe d'une AUTRE branche de la route
+    # (station voisine a plus de FOREIGN_MIN_IDX stations de trace). Cette autre branche possede son propre relief fin
+    # (offsets 3,5 a 11 m tous les ~3 m) qui couvre la zone retiree : pas de trou, plus de recouvrement.
+    FOREIGN_MIN_IDX = 12                       # stations (60 m de trace) : au-dela, un segment voisin est une AUTRE branche
+    FOREIGN_D = ROAD_HALF + 5.0                # couloir protege autour de l'axe de chaque branche (m)
+    seg_buf_ = shapely.buffer(shapely.linestrings(np.stack([P[:-1], P[1:]], axis=1)), FOREIGN_D, quad_segs=2)
+    seg_tree_ = shapely.STRtree(seg_buf_)
+    cq_ = np.zeros((n - 1, m - 1), bool)       # quad (i, j) qui passe sur une autre branche de route
+    for a0_ in range(0, n - 1, 600):
+        a1_ = min(a0_ + 600, n - 1)
+        qc_ = np.stack([np.stack([X[a0_:a1_, :-1], Y[a0_:a1_, :-1]], -1),
+                        np.stack([X[a0_ + 1:a1_ + 1, :-1], Y[a0_ + 1:a1_ + 1, :-1]], -1),
+                        np.stack([X[a0_ + 1:a1_ + 1, 1:], Y[a0_ + 1:a1_ + 1, 1:]], -1),
+                        np.stack([X[a0_:a1_, 1:], Y[a0_:a1_, 1:]], -1)], axis=2).reshape(-1, 4, 2)
+        polys_ = shapely.polygons(np.concatenate([qc_, qc_[:, :1]], axis=1))
+        qi_, sj_ = seg_tree_.query(polys_, predicate="intersects")
+        bad_ = np.abs(sj_ - (a0_ + qi_ // (m - 1))) > FOREIGN_MIN_IDX
+        flat_ = np.zeros(len(polys_), bool)
+        flat_[qi_[bad_]] = True
+        cq_[a0_:a1_] = flat_.reshape(a1_ - a0_, m - 1)
+    keep = keep & ~cq_
+    if cq_.any():
+        print(f"lacets / branches voisines : {int(cq_.any(axis=1).sum()) * STEP:.0f} m de route, {int(cq_.sum())} quadrilateres de relief retires", flush=True)
     cx = (X[:-1, :-1] + X[1:, :-1] + X[1:, 1:] + X[:-1, 1:]) / 4
     cy = (Y[:-1, :-1] + Y[1:, :-1] + Y[1:, 1:] + Y[:-1, 1:]) / 4
     offc = np.abs((OE[:-1, :-1] + OE[:-1, 1:]) / 2)

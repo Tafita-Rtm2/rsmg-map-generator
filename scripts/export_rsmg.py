@@ -325,15 +325,33 @@ def main():
     except Exception:  # noqa
         pass
     seen = set()
+    # ARRETS : de VRAIS arrets de bus OpenStreetMap (highway=bus_stop / amenity=bus_station) a moins de BUS_D m de la route.
+    # Avant, seuls les centres de villages (place=*) etaient pris, jusqu'a 350 m de la route : l'arret se retrouvait « a cote »
+    # de la ou le village est vraiment, sur un point de la route sans rapport avec lui. Les villages ne sont gardes que s'ils
+    # touchent la route (PLACE_D), et chaque arret est ramene sur la station de route la plus proche (voie de droite).
+    BUS_D, PLACE_D, MIN_GAP = 35.0, 120.0, 30          # m, m, stations (30 stations = 150 m entre deux arrets)
+    cand = []
     if tree is not None:
         for nd in osm["nodes"]:
-            nm = nd["tags"].get("name")
-            if not nm or nd["tags"].get("place") not in ("city", "town", "village", "hamlet", "suburb", "neighbourhood"):
+            tg = nd["tags"]
+            is_bus = tg.get("highway") == "bus_stop" or tg.get("amenity") == "bus_station"
+            is_place = tg.get("place") in ("city", "town", "village", "hamlet", "suburb", "neighbourhood")
+            if not (is_bus or is_place):
                 continue
             d, i = tree.query(nd["pt"])
-            if d < 350 and nm not in seen and 5 < i < n - 5:
-                seen.add(nm)
-                stops.append((nm, int(i)))
+            if not (5 < i < n - 5):
+                continue
+            if is_bus and d <= BUS_D:
+                cand.append((0, int(i), tg.get("name") or f"Arret km {float(man['km_from']) + R[int(i), 3]:.1f}"))
+            elif is_place and d <= PLACE_D and tg.get("name"):
+                cand.append((1, int(i), tg["name"]))
+    taken = [i0]
+    for prio, i, nm in sorted(cand, key=lambda c: (c[0], c[1])):
+        if nm in seen or any(abs(i - j) < MIN_GAP for j in taken):
+            continue
+        seen.add(nm)
+        taken.append(i)
+        stops.append((nm, i))
     stops.append((f"Fin km {man['km_to']:g}", n - 6))
     # UN POINT DE DEPART TOUS LES 2 A 4,5 KM (espacement variable), du point 0 a la fin : poses exactement sur la voie de droite de la route principale
     # (position = point de l'axe + 1,75 m, cap = sens de la route), proposes dans le choix du depart de la carte.
