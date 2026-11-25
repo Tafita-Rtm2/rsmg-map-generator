@@ -116,3 +116,33 @@ def draw_bienvenue(w, h, town):
     f2 = fit(d, town, w * 0.86, int(h * 0.26))
     d.text((w / 2, h * 0.71), town, font=f2, fill=(255, 255, 255), anchor="mm")
     return im
+
+
+def fontserif(size):
+    for q in ("/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf", "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf",
+              "/usr/share/fonts/truetype/freefont/FreeSerifBold.ttf"):
+        try:
+            return ImageFont.truetype(q, size)
+        except Exception:  # noqa
+            pass
+    return font(size)
+
+
+def draw_boa(w, h, town, src):
+    """Plaque Bank of Africa (fournie par l'utilisateur) : le bandeau vert est repeint avec BIENVENUE A / TONGASOA ETO / <ville>."""
+    im = Image.open(src).convert("RGB").resize((w, h), Image.LANCZOS)
+    green = im.getpixel((max(2, int(w * 0.02)), int(h * 0.55)))
+    d = ImageDraw.Draw(im)
+    d.rectangle([0, int(h * 0.385), w, int(h * 0.745)], fill=green)
+    t1 = "BIENVENUE À   TONGASOA ETO"
+    for s_ in range(int(h * 0.085), 9, -2):
+        f1 = fontserif(s_)
+        if d.textlength(t1, font=f1) <= w * 0.86:
+            break
+    d.text((w / 2, h * 0.47), t1, font=f1, fill=(255, 255, 255), anchor="mm")
+    for s_ in range(int(h * 0.17), 9, -2):
+        f2 = fontserif(s_)
+        if d.textlength(town, font=f2) <= w * 0.82:
+            break
+    d.text((w / 2, h * 0.64), town, font=f2, fill=(255, 255, 255), anchor="mm")
+    return im

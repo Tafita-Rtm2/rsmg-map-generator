@@ -316,6 +316,17 @@ def user_assets():
 
 
 def finish_assets():
+    try:
+        Image.open(f"{OUT}/rock.jpg").convert("RGB").save(f"{OUT}/boulder.jpg", quality=86)     # rochers 3D du bord de route
+    except Exception as e:  # noqa
+        print("boulder :", e)
+    pl = Image.new("RGB", (128, 128), (54, 56, 58))       # plaque d'egout / grille en fonte
+    dp = ImageDraw.Draw(pl)
+    dp.ellipse([6, 6, 121, 121], outline=(98, 100, 102), width=5)
+    for k_ in range(24, 110, 16):
+        dp.line([(k_, 14), (k_, 114)], fill=(84, 86, 88), width=3)
+        dp.line([(14, k_), (114, k_)], fill=(84, 86, 88), width=3)
+    pl.save(f"{OUT}/plaque_egout.jpg", quality=90)
     solid("cable", (28, 28, 30), 8)
     solid("ligne", (232, 232, 226), 8)
     try:

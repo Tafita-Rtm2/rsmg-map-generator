@@ -894,12 +894,14 @@ def main():
     if town_b:
         for km_ in range(0, int(S[-1] / 1000) + 1, 5):
             put_sign(int(np.argmin(np.abs(S - (km_ * 1000 + 400)))), -1, town_b, "dest", "→")
-    # --- grandes plaques d'entree de ville (BIENVENUE / TONGASOA ETO) et panneaux publicitaires (assets/pub_dynamic.jpg)
-    pub_at = atl.Atlas("panneau_pub", 1024, 512)
-    AD_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "pub_dynamic.jpg")
+    # --- plaques d'entree de ville (Bank of Africa : BIENVENUE A / TONGASOA ETO / ville) et panneaux publicitaires
+    pub_at = atl.Atlas("panneau_pub", 512, 256)
+    ASSETS_D = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets")
+    BOA_PATH = os.path.join(ASSETS_D, "pub_boa.jpg")
+    AD_PATH = os.path.join(ASSETS_D, "pub_dynamic.jpg")
     n_pub = 0
 
-    def put_board(i_, side_, img_fn):
+    def put_board(i_, side_, mat_, uv_):
         nonlocal n_pub
         if i_ < 3 or i_ > n - 4:
             return
@@ -909,7 +911,6 @@ def main():
         if U_build is not None and shapely.intersects(U_build, Point(q_[0], q_[1]).buffer(2.5)):
             return
         z_ = float(terrain_h(q_[0], q_[1]))
-        mat_, uv_ = pub_at.add(img_fn)
         KIND[mat_] = "SOLID"
         for off_ in (-1.2, 1.2):
             pp_ = q_ + np.array([math.cos(heading[i_]), math.sin(heading[i_])]) * off_
@@ -917,17 +918,20 @@ def main():
         A(mat_).add(*ex3d.skin_box(q_[0], q_[1], z_ + 1.95, float(heading[i_]) + math.pi / 2, 1.5, 0.03, 1.5, big=uv_,
                                    plain=(uv_[0] + 0.01, uv_[1] + 0.01)))
         n_pub += 1
-    has_ad = os.path.exists(AD_PATH)
+    ad_cell = pub_at.add(lambda w_, h_: Image.open(AD_PATH).convert("RGB").resize((w_, h_))) if os.path.exists(AD_PATH) else None
     for nm_, i_, rr_ in named:
-        if rr_ < 180:                       # seulement villes et grandes villes
+        if rr_ < 140:                       # villages, villes, grandes villes (pas les hameaux)
             continue
         k_ = int(rr_ / STEP)
-        put_board(i_ - k_ - int(30 / STEP), -1, lambda w_, h_, tt=nm_.upper(): atl.draw_bienvenue(w_, h_, tt))
-        put_board(i_ + k_ + int(30 / STEP), 1, lambda w_, h_, tt=nm_.upper(): atl.draw_bienvenue(w_, h_, tt))
-        if has_ad:
-            ad_fn = lambda w_, h_: Image.open(AD_PATH).convert("RGB").resize((w_, h_))
-            put_board(i_ - k_ - int(80 / STEP), 1, ad_fn)
-            put_board(i_ + k_ + int(80 / STEP), -1, ad_fn)
+        if os.path.exists(BOA_PATH):
+            cell_ = pub_at.add(lambda w_, h_, tt=nm_.upper(): atl.draw_boa(w_, h_, tt, BOA_PATH))
+        else:
+            cell_ = pub_at.add(lambda w_, h_, tt=nm_.upper(): atl.draw_bienvenue(w_, h_, tt))
+        put_board(i_ - k_ - int(30 / STEP), -1, *cell_)
+        put_board(i_ + k_ + int(30 / STEP), 1, *cell_)
+        if ad_cell is not None and rr_ >= 180:
+            put_board(i_ - k_ - int(80 / STEP), 1, *ad_cell)
+            put_board(i_ + k_ + int(80 / STEP), -1, *ad_cell)
     print(f"bornes : {n_bor}, panneaux : {n_sig}, plaques d'entree / pub : {n_pub}", flush=True)
 
     # --- marches de bord de route, cash points, sacs de charbon (villages) + marches OSM
@@ -1030,6 +1034,11 @@ def main():
             for sd_ in (-1, 1):
                 c_ = mp_ + N[i_] * sd_ * 3.65
                 A("beton").add(*ex3d.box(c_[0], c_[1], hm_, ang_, 2.6, 0.2, 0.95, 2.0))
+                A("beton").add(*ex3d.box(c_[0], c_[1], hm_ + 0.95, ang_, 2.6, 0.3, 0.12, 2.0))             # lisse haute
+                dv_ = np.array([math.cos(ang_), math.sin(ang_)])
+                for fr_ in (-0.5, 0.0):
+                    pc_ = c_ + dv_ * fr_ * STEP
+                    A("beton").add(*ex3d.box(pc_[0], pc_[1], hm_, ang_, 0.2, 0.3, 1.3, 1.0))              # poteaux
     n_riv = 0
     for ln_, hw_, dp_, wt_ in rivers:
         smp_ = np.array([ln_.interpolate(s_).coords[0] for s_ in np.arange(0, ln_.length, 4.0)] + [ln_.coords[-1]])
@@ -1057,6 +1066,67 @@ def main():
                 n_riv += 1
             run_ = []
     print(f"surfaces d'eau : {n_riv}", flush=True)
+
+    # ------------------------------------------------------------------ details de bord de route
+    # rochers 3D, plaques d'egout / grilles, petites marches en beton, arches sous les ponts
+    KIND.setdefault("boulder", "SOLID")
+    KIND.setdefault("plaque_egout", "DECOR")
+    br_mask = np.zeros(n, bool)
+    for i0_, i1_ in bridges:
+        br_mask[max(i0_ - 4, 0):i1_ + 5] = True
+
+    def spot_ok(x_, y_, r_=1.0):
+        if not shapely.contains_xy(corridor, x_, y_):
+            return False
+        if U_build is not None and shapely.intersects(U_build, Point(x_, y_).buffer(r_)):
+            return False
+        return not bool(inside(U_water, x_, y_))
+    n_rock = n_plq = n_mar = 0
+    for i_ in range(4, n - 4, 4):                                   # rochers : petits groupes, plus nombreux en zone rocheuse
+        if br_mask[i_]:
+            continue
+        sd_ = 1 if rng.random() < 0.5 else -1
+        cc_ = P[i_] + N[i_] * sd_ * rng.uniform(6.5, 16.0)
+        p_ = 0.10 + (0.35 if bool(inside(U_rock, cc_[0], cc_[1])) else 0.0)
+        if settle[i_]:
+            p_ *= 0.3
+        if rng.random() > p_:
+            continue
+        for _ in range(int(rng.integers(2, 6))):
+            x_, y_ = cc_[0] + rng.normal(0, 2.2), cc_[1] + rng.normal(0, 2.2)
+            r_ = float(np.clip(rng.lognormal(-0.55, 0.5), 0.25, 1.6))
+            if tree.query([x_, y_])[0] < 6.0 or not spot_ok(x_, y_, r_):
+                continue
+            A("boulder").add(*ex3d.rock_mesh(x_, y_, float(terrain_h(x_, y_)), r_, rng))
+            n_rock += 1
+    for i_ in range(6, n - 6, 8):                                   # plaques d'egout (milieu de voie) + grilles de caniveau (bord)
+        if not town[i_] or br_mask[i_]:
+            continue
+        ang_ = float(heading[i_])
+        q_ = P[i_] + N[i_] * float(rng.choice([-1.9, 0.0, 1.9]))
+        A("plaque_egout").add(*ex3d.cylinder(q_[0], q_[1], float(ROADH[i_]) - 0.005, 0.05, 0.38, 0.38, 14))
+        g_ = P[i_] + N[i_] * (3.0 if rng.random() < 0.5 else -3.0)
+        A("plaque_egout").add(*ex3d.box(g_[0], g_[1], float(ROADH[i_]) - 0.02, ang_, 0.45, 0.22, 0.07, 1.0))
+        n_plq += 1
+    for i_ in range(8, n - 8, 12):                                  # petites marches en beton au bord de la route (villages)
+        if not settle[i_] or br_mask[i_] or rng.random() > 0.45:
+            continue
+        sd_ = 1 if rng.random() < 0.5 else -1
+        b_ = P[i_] + N[i_] * sd_ * 5.8
+        if tree.query([b_[0], b_[1]])[0] < 4.6 or not spot_ok(b_[0], b_[1], 1.8):
+            continue
+        zg_ = float(terrain_h(b_[0], b_[1]))
+        for k_ in range(3):
+            c_ = b_ + N[i_] * sd_ * (0.17 + 0.34 * k_)
+            A("beton").add(*ex3d.box(c_[0], c_[1], zg_ - 0.1, float(heading[i_]), 0.9, 0.17, 0.1 + 0.17 * (k_ + 1), 2.0))
+        extra_fp.append((b_[0], b_[1], 1.8))
+        n_mar += 1
+    for i0_, i1_ in bridges:                                        # arches sous le tablier
+        L_ = (i1_ - i0_) * STEP
+        nsp_ = max(1, int(round(L_ / 16.0)))
+        A("beton").add(*ex3d.bridge_arches(P[i0_], P[i1_], float(ROADH[i0_]) - 0.85, float(ROADH[i1_]) - 0.85, nsp_,
+                                           float(np.clip(0.22 * L_ / nsp_, 1.0, 3.5)), lambda x_, y_: float(terrain_h(x_, y_))))
+    print(f"rochers : {n_rock}, plaques d'egout : {n_plq}, marches : {n_mar}, ponts a arches : {len(bridges)}", flush=True)
 
     # ------------------------------------------------------------------ vegetation
     # especes : 0 eucalyptus, 1 arbre rond (manguier...), 2 pin, 3 ravinala, 4 buisson, 5 herbe, 6 riz (rizieres)

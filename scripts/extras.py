@@ -320,3 +320,81 @@ def borne_arch(cx, cy, z0, ang, big, plain, hw=0.255, hb=0.15, h=1.2, zb=0.14):
     V0, UV0, F0 = np.array(V, float), np.array(UV, float), np.array(F, int)
     Vs, UVs, Fs = skin_box(cx, cy, z0, ang, hw + 0.05, hb + 0.02, zb, big=None, plain=plain)
     return np.vstack([V0, Vs]), np.vstack([UV0, UVs]), np.vstack([F0, Fs + len(V0)])
+
+
+def rock_mesh(cx, cy, z, r, rng, segs=9, rings=4):
+    """Rocher irregulier (sphere deformee, aplatie, enterree a moitie). Retourne (V, UV, F)."""
+    sx, sy = rng.uniform(0.8, 1.3), rng.uniform(0.8, 1.3)
+    yaw = rng.uniform(0, 2 * math.pi)
+    cyw, syw = math.cos(yaw), math.sin(yaw)
+    V = [[cx, cy, z + 0.55 * r * rng.uniform(0.9, 1.1) - 0.15 * r]]
+    UV = [[0.5, 0.5]]
+    for k in range(1, rings + 1):
+        th = k * (math.pi * 0.66) / rings
+        for j in range(segs):
+            ph = 2 * math.pi * j / segs
+            rr = r * rng.uniform(0.78, 1.18)
+            lx = rr * sx * math.sin(th) * math.cos(ph)
+            ly = rr * sy * math.sin(th) * math.sin(ph)
+            lz = r * 0.62 * math.cos(th) * rng.uniform(0.9, 1.1) - 0.15 * r
+            V.append([cx + lx * cyw - ly * syw, cy + lx * syw + ly * cyw, z + lz])
+            UV.append([0.5 + 0.5 * math.sin(th) * math.cos(ph) * (r / 1.0), 0.5 + 0.5 * math.sin(th) * math.sin(ph) * (r / 1.0)])
+    F = []
+    for j in range(segs):
+        F.append([0, 1 + j, 1 + (j + 1) % segs])
+    for k in range(rings - 1):
+        for j in range(segs):
+            a, b = 1 + k * segs + j, 1 + k * segs + (j + 1) % segs
+            d, c = a + segs, b + segs
+            F += [[a, d, b], [b, d, c]]
+    return np.array(V, float), np.array(UV, float), np.array(F, int)
+
+
+def bridge_arches(O, E, zc0, zc1, nspan, rise, gz, width=8.2):
+    """Dessous de pont en arches : murs de tete minces, voute (intrados), piles et culees.
+    O, E : debut / fin du pont (x, y) ; zc0, zc1 : hauteur du dessous du tablier au debut / a la fin ;
+    gz(x, y) : hauteur du sol (lit de la riviere). Faces dessinees des deux cotes (pas de souci d'orientation)."""
+    O = np.array(O, float)
+    E = np.array(E, float)
+    d = E - O
+    L = float(np.hypot(*d))
+    t = d / max(L, 1e-9)
+    nl = np.array([-t[1], t[0]])
+    ang = math.atan2(t[1], t[0])
+    V, UV, F = [], [], []
+
+    def pt(s, w, z):
+        return [O[0] + t[0] * s + nl[0] * w, O[1] + t[1] * s + nl[1] * w, z]
+
+    def quad(a, b, c, dd):
+        base = len(V)
+        for q in (a, b, c, dd):
+            V.append(q)
+            UV.append([(q[0] * t[0] + q[1] * t[1]) / 3.0, q[2] / 3.0])
+        F.extend([[base, base + 1, base + 2], [base, base + 2, base + 3], [base, base + 2, base + 1], [base, base + 3, base + 2]])
+
+    def zc(s):
+        return zc0 + (zc1 - zc0) * s / max(L, 1e-9)
+    Ls = L / nspan
+    wl = width / 2 - 0.25
+    for k in range(nspan):
+        s0 = k * Ls
+        ss = [s0 + Ls * j / 8 for j in range(9)]
+        zin = [zc(s) - rise * (2 * (s - s0) / Ls - 1) ** 2 for s in ss]
+        for j in range(8):
+            for w in (-wl - 0.2, -wl + 0.2, wl - 0.2, wl + 0.2):
+                quad(pt(ss[j], w, zin[j]), pt(ss[j + 1], w, zin[j + 1]), pt(ss[j + 1], w, zc(ss[j + 1])), pt(ss[j], w, zc(ss[j])))
+            quad(pt(ss[j], -wl - 0.2, zin[j]), pt(ss[j + 1], -wl - 0.2, zin[j + 1]), pt(ss[j + 1], wl + 0.2, zin[j + 1]), pt(ss[j], wl + 0.2, zin[j]))
+    parts = []
+    if V:
+        parts.append((np.array(V, float), np.array(UV, float), np.array(F, int)))
+    for k in range(nspan + 1):
+        s = k * Ls
+        end = k in (0, nspan)
+        sc = min(max(s, 0.8), L - 0.8) if end else s
+        x, y = O + t * sc
+        zb = float(gz(x, y)) - 0.5
+        ztop = zc(sc) - (0.0 if end else rise)
+        if ztop - zb > 0.2:
+            parts.append(box(x, y, zb, ang, 0.8 if end else 0.55, width / 2 - 0.1, ztop - zb, 3.0))
+    return merge(parts)
