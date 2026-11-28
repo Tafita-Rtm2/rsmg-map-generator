@@ -1,0 +1,358 @@
+Installing collected packages: urllib3, pyparsing, pillow, numpy, networkx, idna, click, charset_normalizer, certifi, attrs, shapely, scipy, requests, pyproj, mapbox-earcut, cligj, click-plugins, affine, rasterio, osmium
+
+Successfully installed affine-3.0.1 attrs-26.1.0 certifi-2026.11.20 charset_normalizer-3.5.3 click-8.5.1 click-plugins-1.1.1.2 cligj-0.7.2 idna-3.20 mapbox-earcut-2.1.0 networkx-3.6.1 numpy-2.4.6 osmium-4.3.2 pillow-13.0.0 pyparsing-3.3.3 pyproj-3.7.2 rasterio-1.4.4 requests-2.34.2 scipy-1.17.1 shapely-2.2.0 urllib3-2.8.0
+telechargement PBF : https://download.geofabrik.de/africa/madagascar-latest.osm.pbf
+Extrait OSM Madagascar : 392 Mo
+RN4: 496 troncons OSM, 10169 noeuds
+etat de la route : 491 troncons avec surface / etat OSM
+50 jonction(s) ajoutee(s) entre troncons separes de moins de 60 m
+depart (-5179.455009288032, 12139.74789161714) (a 13255 m du point demande) -> arrivee (-127039.08492277468, 355004.9168150927) : 557.2 km de route continue
+Troncon retenu : 250.0 km (route complete : 557.2 km)
+OSM : 23692 lignes, 385 points autour de la route
+Relief : Copernicus DEM 30 m (5613, 1996)
+[texlib] grass
+[texlib] shoulder
+[texlib] laterite
+[texlib] falaise
+[texlib] forest
+[texlib] paddy
+[texlib] mud
+[texlib] rock
+[texlib] water
+[texlib] water_surface
+[texlib] road_main
+[texlib] termine
+[texture] Jovena <- assets/jovena.jpg
+[texture] sac de charbon <- assets/sac_charbon.jpg
+[texture] cash point <- assets/cashpoint.jpg
+[texmada] wall_brique_cuite
+[texmada] wall_brique_cuite_rdc
+[texmada] wall_brique_cuite_etage
+[texmada] wall_brique_claire
+[texmada] wall_brique_claire_rdc
+[texmada] wall_brique_claire_etage
+[texmada] wall_bambou
+[texmada] roof_tole_bleue
+[texmada] roof_tuile_grise
+[texmada] palissade_bois
+[texmada] palissade_rouge
+[texmada] palissade_blanche
+[texmada] fer_forge
+[texmada] peint_jaune
+[texmada] panneau_stop
+[texmada] panneau_cedez
+[texmada] feu_tricolore
+[texmada] nid_poule
+[texmada] wall_adobe
+[texmada] wall_adobe_rdc
+[texmada] wall_adobe_etage
+[texmada] wall_adobe_pale
+[texmada] wall_adobe_pale_rdc
+[texmada] wall_adobe_pale_etage
+[texmada] crepi_blanc
+[texmada] crepi_sable
+[texmada] crepi_saumon
+[texmada] mur_pierre
+[texmada] wall_sable
+[texmada] wall_blanc_vieilli
+[texmada] wall_terre_cuite
+[texmada] roof_bozaka
+[texmada] roof_ravinala
+[texmada] roof_tole_rouge
+[texmada] roof_tole_verte
+[texmada] peint_bleu
+[texmada] peint_vert
+[texmada] peint_blanc
+[texmada] peint_rouge
+[texmada] acier
+[texmada] glissiere
+[texmada] haie
+[texmada] ralentisseur
+[texmada] agave
+[texmada] termine
+textures pretes : 95 fichiers
+digues : 4160 m de route en rizieres / zones d'eau
+cours d'eau : 215, ponts : 18
+etangs / lacs / mer : 19
+lacets / branches voisines : 4060 m de route, 2664 quadrilateres de relief retires
+chaussee principale fine : {'nids': 0, 'flaques': 0, 'rows': 99393, 'bad_m': 0, 'light_m': 248403, 'ero_m': 67411.03523095918}
+maisons OSM : 14197
+stations-service : 8, abribus : 6
+maisons ajoutees (villages) : 1884
+details OSM poses : {'murs': 439, 'clotures': 793, 'chateaux_eau': 2, 'pylones': 8, 'ralentisseurs': 28, 'cedez': 4, 'barrieres': 3, 'monuments': 2, 'ecoles': 4, 'eglises': 3}
+lignes electriques OSM : 0, poteaux ajoutes dans les villages : 1079
+lampadaires : 592, passages pietons : 1
+bornes : 249, panneaux : 172, plaques d'entree / pub : 39
+etals : 450, cash points : 58, piles de sacs : 37
+surfaces d'eau : 207 cours d'eau, 19 etangs/lacs
+stationnements / gares routieres : 2, ronds-points : 0
+Traceback (most recent call last):
+  File "/home/runner/work/rsmg-map-generator/rsmg-map-generator/scripts/make_geometry.py", line 1398, in main
+    etat_ = route_etat.place(dict(A=A, KIND=KIND, P=P, N=N, ROADH=ROADH, S=S, STEP=STEP, cond=cond_, minor=minor, nodes=osm["nodes"],
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/rsmg-map-generator/rsmg-map-generator/scripts/route_etat.py", line 454, in place
+    A("water_surface").add(*disk(c[0], c[1], rng.uniform(1.0, min(wd * 0.5, 2.4)), rng.uniform(0.8, 1.4),
+                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "numpy/random/_generator.pyx", line 1094, in numpy.random._generator.Generator.uniform
+  File "numpy/random/_common.pyx", line 634, in numpy.random._common.cont
+  File "numpy/random/_common.pyx", line 432, in numpy.random._common.check_constraint
+ValueError: high - low < 0
+etat des routes ignore (erreur) : high - low < 0
+rochers : 3646, plaques d'egout : 553, marches : 239, ponts a arches : 18
+arbres : 10602267
+termine : 126 troncons
+troncon 0: collision au sol dans 60 m de la route (12122 triangles lointains sans collision)
+troncon 0: 3 fichier(s) 3DS, 83615 vegetaux
+troncon 1: collision au sol dans 60 m de la route (13390 triangles lointains sans collision)
+troncon 1: 2 fichier(s) 3DS, 81974 vegetaux
+troncon 2: collision au sol dans 60 m de la route (15156 triangles lointains sans collision)
+troncon 2: 4 fichier(s) 3DS, 81239 vegetaux
+troncon 3: collision au sol dans 60 m de la route (14939 triangles lointains sans collision)
+troncon 3: 2 fichier(s) 3DS, 80084 vegetaux
+troncon 4: collision au sol dans 60 m de la route (13745 triangles lointains sans collision)
+troncon 4: 3 fichier(s) 3DS, 82849 vegetaux
+troncon 5: collision au sol dans 60 m de la route (15025 triangles lointains sans collision)
+troncon 5: 2 fichier(s) 3DS, 83901 vegetaux
+troncon 6: collision au sol dans 60 m de la route (13712 triangles lointains sans collision)
+troncon 6: 1 fichier(s) 3DS, 85240 vegetaux
+troncon 7: collision au sol dans 60 m de la route (14900 triangles lointains sans collision)
+troncon 7: 2 fichier(s) 3DS, 83632 vegetaux
+troncon 8: collision au sol dans 60 m de la route (14889 triangles lointains sans collision)
+troncon 8: 7 fichier(s) 3DS, 71962 vegetaux
+troncon 9: collision au sol dans 60 m de la route (14397 triangles lointains sans collision)
+troncon 9: 3 fichier(s) 3DS, 80748 vegetaux
+troncon 10: collision au sol dans 60 m de la route (14090 triangles lointains sans collision)
+troncon 10: 1 fichier(s) 3DS, 84496 vegetaux
+troncon 11: collision au sol dans 60 m de la route (13741 triangles lointains sans collision)
+troncon 11: 2 fichier(s) 3DS, 84319 vegetaux
+troncon 12: collision au sol dans 60 m de la route (14665 triangles lointains sans collision)
+troncon 12: 2 fichier(s) 3DS, 84376 vegetaux
+troncon 13: collision au sol dans 60 m de la route (14776 triangles lointains sans collision)
+troncon 13: 2 fichier(s) 3DS, 82974 vegetaux
+troncon 14: collision au sol dans 60 m de la route (15328 triangles lointains sans collision)
+troncon 14: 1 fichier(s) 3DS, 82853 vegetaux
+troncon 15: collision au sol dans 60 m de la route (14789 triangles lointains sans collision)
+troncon 15: 1 fichier(s) 3DS, 80671 vegetaux
+troncon 16: collision au sol dans 60 m de la route (17190 triangles lointains sans collision)
+troncon 16: 2 fichier(s) 3DS, 83422 vegetaux
+troncon 17: collision au sol dans 60 m de la route (17542 triangles lointains sans collision)
+troncon 17: 1 fichier(s) 3DS, 84764 vegetaux
+troncon 18: collision au sol dans 60 m de la route (16674 triangles lointains sans collision)
+troncon 18: 1 fichier(s) 3DS, 83204 vegetaux
+troncon 19: collision au sol dans 60 m de la route (17826 triangles lointains sans collision)
+troncon 19: 1 fichier(s) 3DS, 84467 vegetaux
+troncon 20: collision au sol dans 60 m de la route (18559 triangles lointains sans collision)
+troncon 20: 1 fichier(s) 3DS, 79409 vegetaux
+troncon 21: collision au sol dans 60 m de la route (16577 triangles lointains sans collision)
+troncon 21: 1 fichier(s) 3DS, 84663 vegetaux
+troncon 22: collision au sol dans 60 m de la route (13617 triangles lointains sans collision)
+troncon 22: 1 fichier(s) 3DS, 83510 vegetaux
+troncon 23: collision au sol dans 60 m de la route (15164 triangles lointains sans collision)
+troncon 23: 1 fichier(s) 3DS, 85052 vegetaux
+troncon 24: collision au sol dans 60 m de la route (15922 triangles lointains sans collision)
+troncon 24: 1 fichier(s) 3DS, 82745 vegetaux
+troncon 25: collision au sol dans 60 m de la route (13446 triangles lointains sans collision)
+troncon 25: 1 fichier(s) 3DS, 84823 vegetaux
+troncon 26: collision au sol dans 60 m de la route (13983 triangles lointains sans collision)
+troncon 26: 1 fichier(s) 3DS, 84682 vegetaux
+troncon 27: collision au sol dans 60 m de la route (12491 triangles lointains sans collision)
+troncon 27: 1 fichier(s) 3DS, 84446 vegetaux
+troncon 28: collision au sol dans 60 m de la route (13291 triangles lointains sans collision)
+troncon 28: 1 fichier(s) 3DS, 85309 vegetaux
+troncon 29: collision au sol dans 60 m de la route (13165 triangles lointains sans collision)
+troncon 29: 1 fichier(s) 3DS, 85724 vegetaux
+troncon 30: collision au sol dans 60 m de la route (14215 triangles lointains sans collision)
+troncon 30: 1 fichier(s) 3DS, 85212 vegetaux
+troncon 31: collision au sol dans 60 m de la route (12690 triangles lointains sans collision)
+troncon 31: 1 fichier(s) 3DS, 84577 vegetaux
+troncon 32: collision au sol dans 60 m de la route (13902 triangles lointains sans collision)
+troncon 32: 1 fichier(s) 3DS, 84548 vegetaux
+troncon 33: collision au sol dans 60 m de la route (13361 triangles lointains sans collision)
+troncon 33: 1 fichier(s) 3DS, 85208 vegetaux
+troncon 34: collision au sol dans 60 m de la route (12146 triangles lointains sans collision)
+troncon 34: 1 fichier(s) 3DS, 85975 vegetaux
+troncon 35: collision au sol dans 60 m de la route (13407 triangles lointains sans collision)
+troncon 35: 1 fichier(s) 3DS, 85486 vegetaux
+troncon 36: collision au sol dans 60 m de la route (13876 triangles lointains sans collision)
+troncon 36: 1 fichier(s) 3DS, 84039 vegetaux
+troncon 37: collision au sol dans 60 m de la route (13888 triangles lointains sans collision)
+troncon 37: 1 fichier(s) 3DS, 82488 vegetaux
+troncon 38: collision au sol dans 60 m de la route (17556 triangles lointains sans collision)
+troncon 38: 1 fichier(s) 3DS, 83992 vegetaux
+troncon 39: collision au sol dans 60 m de la route (16530 triangles lointains sans collision)
+troncon 39: 1 fichier(s) 3DS, 84484 vegetaux
+troncon 40: collision au sol dans 60 m de la route (14706 triangles lointains sans collision)
+troncon 40: 2 fichier(s) 3DS, 82383 vegetaux
+troncon 41: collision au sol dans 60 m de la route (14071 triangles lointains sans collision)
+troncon 41: 2 fichier(s) 3DS, 84364 vegetaux
+troncon 42: collision au sol dans 60 m de la route (14005 triangles lointains sans collision)
+troncon 42: 1 fichier(s) 3DS, 81735 vegetaux
+troncon 43: collision au sol dans 60 m de la route (11919 triangles lointains sans collision)
+troncon 43: 1 fichier(s) 3DS, 85699 vegetaux
+troncon 44: collision au sol dans 60 m de la route (13464 triangles lointains sans collision)
+troncon 44: 1 fichier(s) 3DS, 84694 vegetaux
+troncon 45: collision au sol dans 60 m de la route (11366 triangles lointains sans collision)
+troncon 45: 1 fichier(s) 3DS, 85206 vegetaux
+troncon 46: collision au sol dans 60 m de la route (9979 triangles lointains sans collision)
+troncon 46: 1 fichier(s) 3DS, 86646 vegetaux
+troncon 47: collision au sol dans 60 m de la route (11370 triangles lointains sans collision)
+troncon 47: 1 fichier(s) 3DS, 87469 vegetaux
+troncon 48: collision au sol dans 60 m de la route (11947 triangles lointains sans collision)
+troncon 48: 1 fichier(s) 3DS, 85569 vegetaux
+troncon 49: collision au sol dans 60 m de la route (11676 triangles lointains sans collision)
+troncon 49: 1 fichier(s) 3DS, 80748 vegetaux
+troncon 50: collision au sol dans 60 m de la route (12065 triangles lointains sans collision)
+troncon 50: 1 fichier(s) 3DS, 85649 vegetaux
+troncon 51: collision au sol dans 60 m de la route (11238 triangles lointains sans collision)
+troncon 51: 1 fichier(s) 3DS, 85524 vegetaux
+troncon 52: collision au sol dans 60 m de la route (12754 triangles lointains sans collision)
+troncon 52: 1 fichier(s) 3DS, 85666 vegetaux
+troncon 53: collision au sol dans 60 m de la route (11903 triangles lointains sans collision)
+troncon 53: 1 fichier(s) 3DS, 85618 vegetaux
+troncon 54: collision au sol dans 60 m de la route (10641 triangles lointains sans collision)
+troncon 54: 1 fichier(s) 3DS, 90083 vegetaux
+troncon 55: collision au sol dans 60 m de la route (9961 triangles lointains sans collision)
+troncon 55: 1 fichier(s) 3DS, 87379 vegetaux
+troncon 56: collision au sol dans 60 m de la route (15505 triangles lointains sans collision)
+troncon 56: 1 fichier(s) 3DS, 82184 vegetaux
+troncon 57: collision au sol dans 60 m de la route (12089 triangles lointains sans collision)
+troncon 57: 1 fichier(s) 3DS, 85379 vegetaux
+troncon 58: collision au sol dans 60 m de la route (11983 triangles lointains sans collision)
+troncon 58: 1 fichier(s) 3DS, 88081 vegetaux
+troncon 59: collision au sol dans 60 m de la route (11589 triangles lointains sans collision)
+troncon 59: 1 fichier(s) 3DS, 90034 vegetaux
+troncon 60: collision au sol dans 60 m de la route (12512 triangles lointains sans collision)
+troncon 60: 1 fichier(s) 3DS, 85736 vegetaux
+troncon 61: collision au sol dans 60 m de la route (15544 triangles lointains sans collision)
+troncon 61: 1 fichier(s) 3DS, 82777 vegetaux
+troncon 62: collision au sol dans 60 m de la route (13424 triangles lointains sans collision)
+troncon 62: 1 fichier(s) 3DS, 85297 vegetaux
+troncon 63: collision au sol dans 60 m de la route (12016 triangles lointains sans collision)
+troncon 63: 1 fichier(s) 3DS, 86506 vegetaux
+troncon 64: collision au sol dans 60 m de la route (12119 triangles lointains sans collision)
+troncon 64: 1 fichier(s) 3DS, 86100 vegetaux
+troncon 65: collision au sol dans 60 m de la route (12732 triangles lointains sans collision)
+troncon 65: 1 fichier(s) 3DS, 86886 vegetaux
+troncon 66: collision au sol dans 60 m de la route (12420 triangles lointains sans collision)
+troncon 66: 1 fichier(s) 3DS, 86237 vegetaux
+troncon 67: collision au sol dans 60 m de la route (11746 triangles lointains sans collision)
+troncon 67: 1 fichier(s) 3DS, 85498 vegetaux
+troncon 68: collision au sol dans 60 m de la route (13579 triangles lointains sans collision)
+troncon 68: 1 fichier(s) 3DS, 82955 vegetaux
+troncon 69: collision au sol dans 60 m de la route (11939 triangles lointains sans collision)
+troncon 69: 1 fichier(s) 3DS, 85781 vegetaux
+troncon 70: collision au sol dans 60 m de la route (11290 triangles lointains sans collision)
+troncon 70: 1 fichier(s) 3DS, 86653 vegetaux
+troncon 71: collision au sol dans 60 m de la route (11157 triangles lointains sans collision)
+troncon 71: 1 fichier(s) 3DS, 86816 vegetaux
+troncon 72: collision au sol dans 60 m de la route (10088 triangles lointains sans collision)
+troncon 72: 1 fichier(s) 3DS, 87482 vegetaux
+troncon 73: collision au sol dans 60 m de la route (10826 triangles lointains sans collision)
+troncon 73: 1 fichier(s) 3DS, 86670 vegetaux
+troncon 74: collision au sol dans 60 m de la route (14015 triangles lointains sans collision)
+troncon 74: 1 fichier(s) 3DS, 85719 vegetaux
+troncon 75: collision au sol dans 60 m de la route (12248 triangles lointains sans collision)
+troncon 75: 1 fichier(s) 3DS, 83642 vegetaux
+troncon 76: collision au sol dans 60 m de la route (12272 triangles lointains sans collision)
+troncon 76: 1 fichier(s) 3DS, 85977 vegetaux
+troncon 77: collision au sol dans 60 m de la route (13861 triangles lointains sans collision)
+troncon 77: 1 fichier(s) 3DS, 85423 vegetaux
+troncon 78: collision au sol dans 60 m de la route (13165 triangles lointains sans collision)
+troncon 78: 1 fichier(s) 3DS, 84937 vegetaux
+troncon 79: collision au sol dans 60 m de la route (12322 triangles lointains sans collision)
+troncon 79: 1 fichier(s) 3DS, 86125 vegetaux
+troncon 80: collision au sol dans 60 m de la route (12342 triangles lointains sans collision)
+troncon 80: 1 fichier(s) 3DS, 86167 vegetaux
+troncon 81: collision au sol dans 60 m de la route (11659 triangles lointains sans collision)
+troncon 81: 1 fichier(s) 3DS, 87012 vegetaux
+troncon 82: collision au sol dans 60 m de la route (11620 triangles lointains sans collision)
+troncon 82: 1 fichier(s) 3DS, 86350 vegetaux
+troncon 83: collision au sol dans 60 m de la route (12147 triangles lointains sans collision)
+troncon 83: 1 fichier(s) 3DS, 85991 vegetaux
+troncon 84: collision au sol dans 60 m de la route (11451 triangles lointains sans collision)
+troncon 84: 1 fichier(s) 3DS, 87112 vegetaux
+troncon 85: collision au sol dans 60 m de la route (9048 triangles lointains sans collision)
+troncon 85: 1 fichier(s) 3DS, 87353 vegetaux
+troncon 86: collision au sol dans 60 m de la route (9924 triangles lointains sans collision)
+troncon 86: 1 fichier(s) 3DS, 85771 vegetaux
+troncon 87: collision au sol dans 60 m de la route (11181 triangles lointains sans collision)
+troncon 87: 1 fichier(s) 3DS, 86484 vegetaux
+troncon 88: collision au sol dans 60 m de la route (11232 triangles lointains sans collision)
+troncon 88: 1 fichier(s) 3DS, 87270 vegetaux
+troncon 89: collision au sol dans 60 m de la route (10994 triangles lointains sans collision)
+troncon 89: 1 fichier(s) 3DS, 87850 vegetaux
+troncon 90: collision au sol dans 60 m de la route (12133 triangles lointains sans collision)
+troncon 90: 1 fichier(s) 3DS, 85665 vegetaux
+troncon 91: collision au sol dans 60 m de la route (11200 triangles lointains sans collision)
+troncon 91: 1 fichier(s) 3DS, 84170 vegetaux
+troncon 92: collision au sol dans 60 m de la route (11157 triangles lointains sans collision)
+troncon 92: 1 fichier(s) 3DS, 85845 vegetaux
+troncon 93: collision au sol dans 60 m de la route (11200 triangles lointains sans collision)
+troncon 93: 1 fichier(s) 3DS, 85796 vegetaux
+troncon 94: collision au sol dans 60 m de la route (11200 triangles lointains sans collision)
+troncon 94: 1 fichier(s) 3DS, 85451 vegetaux
+troncon 95: collision au sol dans 60 m de la route (11446 triangles lointains sans collision)
+troncon 95: 1 fichier(s) 3DS, 83481 vegetaux
+troncon 96: collision au sol dans 60 m de la route (11075 triangles lointains sans collision)
+troncon 96: 1 fichier(s) 3DS, 85517 vegetaux
+troncon 97: collision au sol dans 60 m de la route (11475 triangles lointains sans collision)
+troncon 97: 1 fichier(s) 3DS, 86227 vegetaux
+troncon 98: collision au sol dans 60 m de la route (10905 triangles lointains sans collision)
+troncon 98: 1 fichier(s) 3DS, 85745 vegetaux
+troncon 99: collision au sol dans 60 m de la route (11015 triangles lointains sans collision)
+troncon 99: 1 fichier(s) 3DS, 85814 vegetaux
+troncon 100: collision au sol dans 60 m de la route (11416 triangles lointains sans collision)
+troncon 100: 1 fichier(s) 3DS, 81177 vegetaux
+troncon 101: collision au sol dans 60 m de la route (12218 triangles lointains sans collision)
+troncon 101: 2 fichier(s) 3DS, 84337 vegetaux
+troncon 102: collision au sol dans 60 m de la route (11213 triangles lointains sans collision)
+troncon 102: 1 fichier(s) 3DS, 85647 vegetaux
+troncon 103: collision au sol dans 60 m de la route (11380 triangles lointains sans collision)
+troncon 103: 1 fichier(s) 3DS, 83577 vegetaux
+troncon 104: collision au sol dans 60 m de la route (11227 triangles lointains sans collision)
+troncon 104: 1 fichier(s) 3DS, 86028 vegetaux
+troncon 105: collision au sol dans 60 m de la route (11191 triangles lointains sans collision)
+troncon 105: 1 fichier(s) 3DS, 86246 vegetaux
+troncon 106: collision au sol dans 60 m de la route (11286 triangles lointains sans collision)
+troncon 106: 1 fichier(s) 3DS, 85592 vegetaux
+troncon 107: collision au sol dans 60 m de la route (10544 triangles lointains sans collision)
+troncon 107: 1 fichier(s) 3DS, 85452 vegetaux
+troncon 108: collision au sol dans 60 m de la route (11171 triangles lointains sans collision)
+troncon 108: 1 fichier(s) 3DS, 85399 vegetaux
+troncon 109: collision au sol dans 60 m de la route (11160 triangles lointains sans collision)
+troncon 109: 1 fichier(s) 3DS, 85538 vegetaux
+troncon 110: collision au sol dans 60 m de la route (11870 triangles lointains sans collision)
+troncon 110: 1 fichier(s) 3DS, 83480 vegetaux
+troncon 111: collision au sol dans 60 m de la route (11635 triangles lointains sans collision)
+troncon 111: 1 fichier(s) 3DS, 84405 vegetaux
+troncon 112: collision au sol dans 60 m de la route (11166 triangles lointains sans collision)
+troncon 112: 1 fichier(s) 3DS, 83637 vegetaux
+troncon 113: collision au sol dans 60 m de la route (11201 triangles lointains sans collision)
+troncon 113: 1 fichier(s) 3DS, 85256 vegetaux
+troncon 114: collision au sol dans 60 m de la route (10616 triangles lointains sans collision)
+troncon 114: 1 fichier(s) 3DS, 85069 vegetaux
+troncon 115: collision au sol dans 60 m de la route (11289 triangles lointains sans collision)
+troncon 115: 1 fichier(s) 3DS, 86880 vegetaux
+troncon 116: collision au sol dans 60 m de la route (11559 triangles lointains sans collision)
+troncon 116: 1 fichier(s) 3DS, 85555 vegetaux
+troncon 117: collision au sol dans 60 m de la route (10570 triangles lointains sans collision)
+troncon 117: 1 fichier(s) 3DS, 84866 vegetaux
+troncon 118: collision au sol dans 60 m de la route (11200 triangles lointains sans collision)
+troncon 118: 1 fichier(s) 3DS, 83874 vegetaux
+troncon 119: collision au sol dans 60 m de la route (11200 triangles lointains sans collision)
+troncon 119: 1 fichier(s) 3DS, 85426 vegetaux
+troncon 120: collision au sol dans 60 m de la route (11228 triangles lointains sans collision)
+troncon 120: 1 fichier(s) 3DS, 84862 vegetaux
+troncon 121: collision au sol dans 60 m de la route (11168 triangles lointains sans collision)
+troncon 121: 1 fichier(s) 3DS, 83233 vegetaux
+troncon 122: collision au sol dans 60 m de la route (11204 triangles lointains sans collision)
+troncon 122: 1 fichier(s) 3DS, 85480 vegetaux
+troncon 123: collision au sol dans 60 m de la route (11677 triangles lointains sans collision)
+troncon 123: 1 fichier(s) 3DS, 84218 vegetaux
+troncon 124: collision au sol dans 60 m de la route (11181 triangles lointains sans collision)
+troncon 124: 1 fichier(s) 3DS, 85473 vegetaux
+troncon 125: collision au sol dans 60 m de la route (14 triangles lointains sans collision)
+/home/runner/work/rsmg-map-generator/rsmg-map-generator/scripts/export_rsmg.py:224: UserWarning: loadtxt: input contained no data: "work/tiles/tile_125_trees.csv"
+  arr = np.loadtxt(p, delimiter=",", skiprows=1, ndmin=2)
+troncon 125: 1 fichier(s) 3DS, 0 vegetaux
+rn4_km0-250_RSMG.zip 338.39 Mo
